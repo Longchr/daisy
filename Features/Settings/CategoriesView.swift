@@ -2,8 +2,12 @@ import SwiftUI
 import SwiftData
 
 struct CategoriesView: View {
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appState: AppState
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
+    @Query private var transactions: [LedgerTransaction]
     @State private var isAdding = false
+    @State private var editingCategory: LedgerCategory?
 
     var body: some View {
         List {
@@ -22,6 +26,22 @@ struct CategoriesView: View {
                                         .foregroundStyle(.tertiary)
                                 }
                             }
+                            .swipeActions {
+                                if !category.isSystem {
+                                    Button {
+                                        editingCategory = category
+                                    } label: {
+                                        Label("编辑", systemImage: "pencil")
+                                    }
+                                    .tint(DaisyTheme.accent)
+
+                                    Button(role: .destructive) {
+                                        delete(category)
+                                    } label: {
+                                        Label("删除", systemImage: "trash")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -35,14 +55,33 @@ struct CategoriesView: View {
             }
         }
         .sheet(isPresented: $isAdding) {
-            AddCategoryView()
+            CategoryEditorView()
+        }
+        .sheet(item: $editingCategory) { category in
+            CategoryEditorView(category: category)
+        }
+    }
+
+    private func delete(_ category: LedgerCategory) {
+        guard !transactions.contains(where: { $0.categoryID == category.id }) else {
+            appState.presentToast("该分类正在被账单使用，不能删除", style: .warning)
+            return
+        }
+        modelContext.delete(category)
+        do {
+            try modelContext.save()
+            appState.presentToast("分类已删除", style: .warning)
+        } catch {
+            modelContext.rollback()
+            appState.presentToast("分类删除失败", style: .error)
         }
     }
 }
 
-private struct AddCategoryView: View {
+private struct CategoryEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appState: AppState
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
 
     @State private var name = ""
@@ -50,8 +89,20 @@ private struct AddCategoryView: View {
     @State private var symbol = "tag.fill"
     @State private var tintHex = "23766E"
 
+    let category: LedgerCategory?
+
     private let symbols = ["tag.fill", "cup.and.saucer.fill", "cart.fill", "figure.walk", "gift.fill", "heart.fill", "briefcase.fill", "pawprint.fill"]
     private let colors = ["23766E", "5B8DEF", "D99058", "9F7AEA", "E17B9A", "4F8B6F", "D65A5A", "8A8A8E"]
+
+    init(category: LedgerCategory? = nil) {
+        self.category = category
+        if let category {
+            _name = State(initialValue: category.name)
+            _kind = State(initialValue: category.kind)
+            _symbol = State(initialValue: category.symbol)
+            _tintHex = State(initialValue: category.tintHex)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -60,6 +111,7 @@ private struct AddCategoryView: View {
                 Picker("类型", selection: $kind) {
                     ForEach(TransactionKind.allCases) { Text($0.title).tag($0) }
                 }
+                .disabled(category != nil)
                 Section("图标") {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 14) {
                         ForEach(symbols, id: \.self) { candidate in
@@ -90,27 +142,44 @@ private struct AddCategoryView: View {
                     }
                 }
             }
-            .navigationTitle("添加分类")
+            .navigationTitle(category == nil ? "添加分类" : "编辑分类")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
-                        modelContext.insert(LedgerCategory(
-                            id: "custom.\(UUID().uuidString.lowercased())",
-                            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                            kind: kind,
-                            symbol: symbol,
-                            tintHex: tintHex,
-                            sortOrder: (categories.map(\.sortOrder).max() ?? 0) + 1,
-                            isSystem: false
-                        ))
-                        try? modelContext.save()
-                        dismiss()
+                        save()
                     }
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+        }
+    }
+
+    private func save() {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let category {
+            category.name = trimmedName
+            category.symbol = symbol
+            category.tintHex = tintHex
+        } else {
+            modelContext.insert(LedgerCategory(
+                id: "custom.\(UUID().uuidString.lowercased())",
+                name: trimmedName,
+                kind: kind,
+                symbol: symbol,
+                tintHex: tintHex,
+                sortOrder: (categories.map(\.sortOrder).max() ?? 0) + 1,
+                isSystem: false
+            ))
+        }
+        do {
+            try modelContext.save()
+            appState.presentToast(category == nil ? "分类已添加" : "分类已更新")
+            dismiss()
+        } catch {
+            modelContext.rollback()
+            appState.presentToast("分类保存失败", style: .error)
         }
     }
 }
