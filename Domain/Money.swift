@@ -1,6 +1,6 @@
 import Foundation
 
-struct Money: Hashable, Codable {
+struct Money: Hashable, Codable, Sendable {
     let minorUnits: Int64
     let currencyCode: String
     let exponent: Int

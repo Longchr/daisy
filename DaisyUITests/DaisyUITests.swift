@@ -47,4 +47,21 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["fetchModelsButton"].exists)
         XCTAssertTrue(app.buttons["testVisionButton"].exists)
     }
+
+    func testFirstRunOnboardingExplainsPrivacyAndOpensSettings() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--show-onboarding"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["安静地记好每一笔"].waitForExistence(timeout: 3))
+        app.buttons["onboardingContinueButton"].tap()
+        XCTAssertTrue(app.staticTexts["服务由你选择"].waitForExistence(timeout: 2))
+        app.buttons["onboardingContinueButton"].tap()
+        XCTAssertTrue(app.staticTexts["付款后，双击背面"].waitForExistence(timeout: 2))
+        app.buttons["onboardingContinueButton"].tap()
+        XCTAssertTrue(app.buttons["onboardingOpenSettingsButton"].waitForExistence(timeout: 2))
+        app.buttons["onboardingOpenSettingsButton"].tap()
+
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 3))
+    }
 }

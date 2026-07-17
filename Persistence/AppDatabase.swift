@@ -34,17 +34,28 @@ final class AppDatabase {
         seedDefaults(in: container.mainContext)
     }
 
+    func recognitionCategoryDescriptors() -> [(id: String, name: String, kind: TransactionKind)] {
+        let context = container.mainContext
+        seedDefaults(in: context)
+        let descriptor = FetchDescriptor<LedgerCategory>(
+            sortBy: [SortDescriptor(\.sortOrder)]
+        )
+        let categories = (try? context.fetch(descriptor)) ?? []
+        return categories.map { (id: $0.id, name: $0.name, kind: $0.kind) }
+    }
+
     func saveRecognition(
         _ recognition: ValidatedRecognition,
         idempotencyKey: String? = nil
-    ) throws -> LedgerTransaction {
+    ) throws -> SavedTransaction {
         let context = container.mainContext
+        seedDefaults(in: context)
         if let duplicate = findDuplicate(
             of: recognition,
             idempotencyKey: idempotencyKey,
             in: context
         ) {
-            return duplicate
+            return SavedTransaction(duplicate)
         }
 
         let transaction = LedgerTransaction(
@@ -54,6 +65,7 @@ final class AppDatabase {
             currencyExponent: recognition.currencyExponent,
             merchant: recognition.merchant,
             categoryID: recognition.categoryID,
+            accountID: resolveAccountID(for: recognition, in: context),
             occurredAt: recognition.occurredAt,
             note: recognition.note ?? "",
             source: .aiScreenshot,
@@ -62,7 +74,7 @@ final class AppDatabase {
         )
         context.insert(transaction)
         try context.save()
-        return transaction
+        return SavedTransaction(transaction)
     }
 
     func createDraft(
@@ -70,11 +82,11 @@ final class AppDatabase {
         rawData: Data?,
         idempotencyKey: String,
         errorCode: String? = nil
-    ) throws -> RecognitionDraft {
+    ) throws -> UUID {
         let context = container.mainContext
         let drafts = (try? context.fetch(FetchDescriptor<RecognitionDraft>())) ?? []
         if let existing = drafts.first(where: { $0.idempotencyKey == idempotencyKey }) {
-            return existing
+            return existing.id
         }
 
         let draft = RecognitionDraft(
@@ -86,7 +98,7 @@ final class AppDatabase {
         )
         context.insert(draft)
         try context.save()
-        return draft
+        return draft.id
     }
 
     private func findDuplicate(
@@ -114,6 +126,45 @@ final class AppDatabase {
             let timeDelta = abs(item.occurredAt.timeIntervalSince(recognition.occurredAt))
             let sameMerchant = MerchantNormalizer.normalize(item.merchant) == normalizedMerchant
             return timeDelta <= 180 && sameMerchant
+        }
+    }
+
+    private func resolveAccountID(
+        for recognition: ValidatedRecognition,
+        in context: ModelContext
+    ) -> UUID? {
+        let descriptor = FetchDescriptor<Account>(
+            sortBy: [SortDescriptor(\.sortOrder)]
+        )
+        guard let accounts = try? context.fetch(descriptor), !accounts.isEmpty else {
+            return nil
+        }
+
+        let clues = [recognition.paymentChannel, recognition.paymentMethodHint]
+            .compactMap { $0?.lowercased() }
+            .joined(separator: " ")
+
+        if let namedMatch = accounts.first(where: {
+            !$0.isArchived && clues.localizedCaseInsensitiveContains($0.name)
+        }) {
+            return namedMatch.id
+        }
+
+        let preferredName: String?
+        if clues.contains("alipay") || clues.contains("支付宝") {
+            preferredName = "支付宝"
+        } else if clues.contains("wechat") || clues.contains("weixin") || clues.contains("微信") {
+            preferredName = "微信支付"
+        } else if clues.contains("bank") || clues.contains("card") || clues.contains("银行卡") {
+            preferredName = "银行卡"
+        } else if clues.contains("cash") || clues.contains("现金") {
+            preferredName = "现金"
+        } else {
+            preferredName = nil
+        }
+
+        return preferredName.flatMap { name in
+            accounts.first { !$0.isArchived && $0.name == name }?.id
         }
     }
 

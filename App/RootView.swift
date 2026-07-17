@@ -4,6 +4,31 @@ struct RootView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appLock: AppLockController
+    @AppStorage(OnboardingState.completedKey) private var onboardingCompleted = false
+    @State private var forcedOnboardingDismissed = false
+
+    private var isUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("--ui-testing")
+    }
+
+    private var isForcingOnboarding: Bool {
+        ProcessInfo.processInfo.arguments.contains("--show-onboarding")
+    }
+
+    private var isPresentingOnboarding: Binding<Bool> {
+        Binding(
+            get: {
+                (isForcingOnboarding && !forcedOnboardingDismissed)
+                    || (!onboardingCompleted && !isUITesting)
+            },
+            set: { isPresented in
+                if !isPresented {
+                    onboardingCompleted = true
+                    forcedOnboardingDismissed = true
+                }
+            }
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -45,6 +70,13 @@ struct RootView: View {
         }
         .sheet(isPresented: $appState.isPresentingRecognitionImport) {
             RecognitionImportView()
+        }
+        .fullScreenCover(isPresented: isPresentingOnboarding) {
+            OnboardingView { openSettings in
+                onboardingCompleted = true
+                forcedOnboardingDismissed = true
+                appState.selectedTab = openSettings ? .settings : .dashboard
+            }
         }
     }
 }

@@ -86,10 +86,16 @@ struct DataManagementView: View {
             let url = try result.get()
             let accessed = url.startAccessingSecurityScopedResource()
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            let backup = try ExportService.decodeBackup(Data(contentsOf: url))
-            let existingIDs = Set(transactions.map(\.id))
+            let values = try url.resourceValues(forKeys: [.fileSizeKey])
+            guard (values.fileSize ?? 0) <= 50_000_000 else {
+                throw ExportService.BackupError.tooManyRecords
+            }
+            let backup = try ExportService.decodeBackup(
+                Data(contentsOf: url, options: [.mappedIfSafe])
+            )
+            var existingIDs = Set(transactions.map(\.id))
             var inserted = 0
-            for record in backup.transactions where !existingIDs.contains(record.id) {
+            for record in backup.transactions where existingIDs.insert(record.id).inserted {
                 guard let kind = TransactionKind(rawValue: record.kind) else { continue }
                 modelContext.insert(LedgerTransaction(
                     id: record.id,
@@ -108,8 +114,8 @@ struct DataManagementView: View {
                 inserted += 1
             }
 
-            let existingAccountIDs = Set(accounts.map(\.id))
-            for record in backup.accounts where !existingAccountIDs.contains(record.id) {
+            var existingAccountIDs = Set(accounts.map(\.id))
+            for record in backup.accounts where existingAccountIDs.insert(record.id).inserted {
                 modelContext.insert(Account(
                     id: record.id,
                     name: record.name,
@@ -122,8 +128,8 @@ struct DataManagementView: View {
                 ))
             }
 
-            let existingCategoryIDs = Set(categories.map(\.id))
-            for record in backup.categories where !existingCategoryIDs.contains(record.id) {
+            var existingCategoryIDs = Set(categories.map(\.id))
+            for record in backup.categories where existingCategoryIDs.insert(record.id).inserted {
                 guard let kind = TransactionKind(rawValue: record.kind) else { continue }
                 modelContext.insert(LedgerCategory(
                     id: record.id,
@@ -136,8 +142,8 @@ struct DataManagementView: View {
                 ))
             }
 
-            let existingBudgetIDs = Set(budgets.map(\.id))
-            for record in backup.budgets where !existingBudgetIDs.contains(record.id) {
+            var existingBudgetIDs = Set(budgets.map(\.id))
+            for record in backup.budgets where existingBudgetIDs.insert(record.id).inserted {
                 modelContext.insert(MonthlyBudget(
                     id: record.id,
                     monthStart: record.monthStart,
@@ -148,7 +154,9 @@ struct DataManagementView: View {
             try modelContext.save()
             appState.presentToast("已恢复 \(inserted) 笔账单")
         } catch {
-            appState.presentToast("恢复失败：文件格式不正确", style: .error)
+            modelContext.rollback()
+            let message = (error as? LocalizedError)?.errorDescription ?? "文件格式不正确"
+            appState.presentToast("恢复失败：\(message)", style: .error)
         }
     }
 

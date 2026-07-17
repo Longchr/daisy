@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 actor RecognitionEngine {
-    struct Outcome {
+    struct Outcome: Sendable {
         let recognition: ValidatedRecognition
         let rawJSON: Data
         let idempotencyKey: String
@@ -23,12 +23,12 @@ actor RecognitionEngine {
         let prepared = try ImagePreprocessor.prepareJPEG(from: imageData)
         async let ocrTask = VisionOCRService.recognizeText(from: prepared)
         let ocrText = try await ocrTask
-        let categories = Self.categoryDescriptors
+        let categories = await AppDatabase.shared.recognitionCategoryDescriptors()
 
         let response = try await client.recognize(
             imageData: prepared,
             ocrText: ocrText,
-            categories: categories,
+            categories: categories.map { (id: $0.id, name: $0.name) },
             configuration: configuration,
             apiKey: AIConfigurationStore.apiKey()
         )
@@ -42,30 +42,17 @@ actor RecognitionEngine {
             response.payload,
             ocrText: ocrText,
             allowedCategoryIDs: Set(categories.map { $0.id }),
+            categoryKinds: Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0.kind) }),
             autoSaveThreshold: threshold,
-            highValueThresholdMinor: highValue
+            highValueThresholdMinor: highValue,
+            forcedReviewWarnings: configuration.visionVerified
+                ? []
+                : ["当前模型尚未通过 Daisy 视觉测试"]
         )
 
         return Outcome(recognition: recognition, rawJSON: response.rawJSON, idempotencyKey: idempotencyKey)
     }
 
-    private static let categoryDescriptors: [(id: String, name: String)] = [
-        ("expense.food", "餐饮"),
-        ("expense.grocery", "商超"),
-        ("expense.transport", "交通"),
-        ("expense.shopping", "购物"),
-        ("expense.housing", "居住"),
-        ("expense.utilities", "缴费"),
-        ("expense.entertainment", "娱乐"),
-        ("expense.health", "医疗"),
-        ("expense.education", "教育"),
-        ("expense.travel", "旅行"),
-        ("expense.other", "其他支出"),
-        ("income.salary", "工资"),
-        ("income.refund", "退款"),
-        ("income.other", "其他收入"),
-        ("transfer.account", "账户转账")
-    ]
 }
 
 enum RecognitionFingerprint {

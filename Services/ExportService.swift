@@ -96,6 +96,23 @@ struct DaisyBackup: Codable {
 }
 
 enum ExportService {
+    enum BackupError: LocalizedError, Equatable {
+        case unsupportedVersion
+        case tooManyRecords
+        case invalidRecord
+
+        var errorDescription: String? {
+            switch self {
+            case .unsupportedVersion: "备份来自不受支持的 Daisy 版本"
+            case .tooManyRecords: "备份包含过多记录"
+            case .invalidRecord: "备份包含无效或重复的财务记录"
+            }
+        }
+    }
+
+    static let currentSchemaVersion = 1
+    static let maximumBackupRecords = 100_000
+
     static func makeCSVFile(transactions: [LedgerTransaction]) throws -> URL {
         var rows = ["id,type,amount_minor,currency,merchant,category_id,occurred_at,note,source"]
         let dateFormatter = ISO8601DateFormatter()
@@ -129,7 +146,7 @@ enum ExportService {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let backup = DaisyBackup(
-            schemaVersion: 1,
+            schemaVersion: currentSchemaVersion,
             createdAt: Date(),
             transactions: transactions.map(TransactionExportRecord.init),
             accounts: accounts.map(AccountExportRecord.init),
@@ -146,10 +163,11 @@ enum ExportService {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         if let backup = try? decoder.decode(DaisyBackup.self, from: data) {
+            try validate(backup)
             return backup
         }
         let legacyTransactions = try decoder.decode([TransactionExportRecord].self, from: data)
-        return DaisyBackup(
+        let backup = DaisyBackup(
             schemaVersion: 0,
             createdAt: Date(),
             transactions: legacyTransactions,
@@ -157,6 +175,56 @@ enum ExportService {
             categories: [],
             budgets: []
         )
+        try validate(backup)
+        return backup
+    }
+
+    private static func validate(_ backup: DaisyBackup) throws {
+        guard (0...currentSchemaVersion).contains(backup.schemaVersion) else {
+            throw BackupError.unsupportedVersion
+        }
+        let totalCount = backup.transactions.count
+            + backup.accounts.count
+            + backup.categories.count
+            + backup.budgets.count
+        guard totalCount <= maximumBackupRecords else { throw BackupError.tooManyRecords }
+
+        guard Set(backup.transactions.map(\.id)).count == backup.transactions.count,
+              Set(backup.accounts.map(\.id)).count == backup.accounts.count,
+              Set(backup.categories.map(\.id)).count == backup.categories.count,
+              Set(backup.budgets.map(\.id)).count == backup.budgets.count else {
+            throw BackupError.invalidRecord
+        }
+
+        guard backup.transactions.allSatisfy({ record in
+            TransactionKind(rawValue: record.kind) != nil
+                && record.amountMinor > 0
+                && (0...4).contains(record.currencyExponent)
+                && isCurrencyCode(record.currencyCode)
+                && !record.merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && record.merchant.count <= 200
+                && !record.categoryID.isEmpty
+                && record.categoryID.count <= 120
+                && record.note.count <= 2_000
+        }), backup.accounts.allSatisfy({ record in
+            AccountType(rawValue: record.type) != nil
+                && !record.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && record.name.count <= 100
+                && isCurrencyCode(record.currencyCode)
+        }), backup.categories.allSatisfy({ record in
+            TransactionKind(rawValue: record.kind) != nil
+                && !record.id.isEmpty
+                && record.id.count <= 120
+                && !record.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && record.name.count <= 80
+        }), backup.budgets.allSatisfy({ $0.amountMinor > 0 }) else {
+            throw BackupError.invalidRecord
+        }
+    }
+
+    private static func isCurrencyCode(_ value: String) -> Bool {
+        value.unicodeScalars.count == 3
+            && value.unicodeScalars.allSatisfy { (65...90).contains($0.value) }
     }
 
     private static func escape(_ value: String) -> String {

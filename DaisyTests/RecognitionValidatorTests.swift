@@ -79,15 +79,68 @@ final class RecognitionValidatorTests: XCTestCase {
         }
     }
 
-    private func makePayload(amount: Int64?, confidence: Double) -> RecognitionPayload {
+    func testCategoryKindMismatchFallsBackAndRequiresReview() throws {
+        let payload = makePayload(
+            amount: 2_800,
+            confidence: 0.99,
+            categoryID: "income.other"
+        )
+        let result = try RecognitionValidator.validate(
+            payload,
+            ocrText: "支付成功 ¥28.00",
+            allowedCategoryIDs: allowed,
+            categoryKinds: ["expense.food": .expense, "expense.other": .expense, "income.other": .income],
+            autoSaveThreshold: 0.9,
+            highValueThresholdMinor: 50_000
+        )
+
+        XCTAssertEqual(result.categoryID, "expense.other")
+        XCTAssertTrue(result.needsReview)
+    }
+
+    func testUnverifiedVisionModelForcesReview() throws {
+        let result = try RecognitionValidator.validate(
+            makePayload(amount: 2_800, confidence: 0.99),
+            ocrText: "支付成功 ¥28.00",
+            allowedCategoryIDs: allowed,
+            autoSaveThreshold: 0.9,
+            highValueThresholdMinor: 50_000,
+            forcedReviewWarnings: ["模型尚未验证"]
+        )
+
+        XCTAssertTrue(result.needsReview)
+        XCTAssertTrue(result.warnings.contains("模型尚未验证"))
+    }
+
+    func testInvalidCurrencyExponentIsRejected() {
+        let payload = makePayload(amount: 2_800, confidence: 0.99, currencyExponent: 12)
+        XCTAssertThrowsError(
+            try RecognitionValidator.validate(
+                payload,
+                ocrText: "¥28.00",
+                allowedCategoryIDs: allowed,
+                autoSaveThreshold: 0.9,
+                highValueThresholdMinor: 50_000
+            )
+        ) { error in
+            XCTAssertEqual(error as? RecognitionError, .invalidResponse)
+        }
+    }
+
+    private func makePayload(
+        amount: Int64?,
+        confidence: Double,
+        categoryID: String = "expense.food",
+        currencyExponent: Int = 2
+    ) -> RecognitionPayload {
         RecognitionPayload(
             transaction: .init(
                 type: "expense",
                 amountMinor: amount,
                 currency: "CNY",
-                currencyExponent: 2,
+                currencyExponent: currencyExponent,
                 merchant: "Daisy 测试咖啡",
-                categoryID: "expense.food",
+                categoryID: categoryID,
                 occurredAt: ISO8601DateFormatter().string(from: Date()),
                 paymentChannel: "alipay",
                 paymentMethodHint: nil,

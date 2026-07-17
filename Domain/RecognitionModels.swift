@@ -1,7 +1,7 @@
 import Foundation
 
-struct RecognitionPayload: Codable, Equatable {
-    struct Transaction: Codable, Equatable {
+struct RecognitionPayload: Codable, Equatable, Sendable {
+    struct Transaction: Codable, Equatable, Sendable {
         let type: String
         let amountMinor: Int64?
         let currency: String?
@@ -29,7 +29,7 @@ struct RecognitionPayload: Codable, Equatable {
         }
     }
 
-    struct Confidence: Codable, Equatable {
+    struct Confidence: Codable, Equatable, Sendable {
         let overall: Double?
         let amount: Double?
         let type: Double?
@@ -45,7 +45,7 @@ struct RecognitionPayload: Codable, Equatable {
         }
     }
 
-    struct Evidence: Codable, Equatable {
+    struct Evidence: Codable, Equatable, Sendable {
         let amountText: String?
         let merchantText: String?
         let successText: String?
@@ -63,7 +63,7 @@ struct RecognitionPayload: Codable, Equatable {
     let warnings: [String]?
 }
 
-struct ValidatedRecognition: Equatable {
+struct ValidatedRecognition: Equatable, Sendable {
     let kind: TransactionKind
     let amountMinor: Int64
     let currencyCode: String
@@ -80,7 +80,7 @@ struct ValidatedRecognition: Equatable {
     let warnings: [String]
 }
 
-enum RecognitionError: LocalizedError, Equatable {
+enum RecognitionError: LocalizedError, Equatable, Sendable {
     case invalidURL
     case localNetworkDisabled
     case unauthorized
@@ -88,6 +88,8 @@ enum RecognitionError: LocalizedError, Equatable {
     case modelNotFound
     case modelDoesNotSupportVision
     case timeout
+    case tlsFailure
+    case imageTooLarge
     case invalidResponse
     case missingAmount
     case unsupportedCurrency
@@ -103,6 +105,8 @@ enum RecognitionError: LocalizedError, Equatable {
         case .modelNotFound: "所选模型不存在"
         case .modelDoesNotSupportVision: "所选模型不支持图片识别"
         case .timeout: "AI 服务响应超时"
+        case .tlsFailure: "AI 服务证书校验失败"
+        case .imageTooLarge: "截图压缩后仍然过大"
         case .invalidResponse: "AI 返回的数据格式无法识别"
         case .missingAmount: "没有识别到可信的付款金额"
         case .unsupportedCurrency: "识别到暂不支持的币种"
@@ -120,6 +124,8 @@ enum RecognitionError: LocalizedError, Equatable {
         case .modelNotFound: "model_not_found"
         case .modelDoesNotSupportVision: "vision_not_supported"
         case .timeout: "timeout"
+        case .tlsFailure: "tls_failure"
+        case .imageTooLarge: "image_too_large"
         case .invalidResponse: "invalid_response"
         case .missingAmount: "missing_amount"
         case .unsupportedCurrency: "unsupported_currency"

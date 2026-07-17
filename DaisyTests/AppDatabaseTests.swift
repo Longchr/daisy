@@ -60,14 +60,48 @@ final class AppDatabaseTests: XCTestCase {
             errorCode: "network"
         )
 
-        XCTAssertEqual(first.id, second.id)
+        XCTAssertEqual(first, second)
         XCTAssertEqual(
             try database.container.mainContext.fetchCount(FetchDescriptor<RecognitionDraft>()),
             1
         )
     }
 
-    private func makeRecognition(occurredAt: Date = Date()) -> ValidatedRecognition {
+    func testRecognitionMapsAlipayChannelToDefaultAccount() throws {
+        let database = AppDatabase(inMemory: true)
+        let transaction = try database.saveRecognition(
+            makeRecognition(paymentChannel: "alipay")
+        )
+        let accounts = try database.container.mainContext.fetch(FetchDescriptor<Account>())
+
+        XCTAssertEqual(accounts.first { $0.id == transaction.accountID }?.name, "支付宝")
+    }
+
+    func testRecognitionCategoriesIncludeUserDefinedCategory() throws {
+        let database = AppDatabase(inMemory: true)
+        database.seedIfNeeded()
+        let category = LedgerCategory(
+            id: "custom.coffee",
+            name: "咖啡",
+            kind: .expense,
+            symbol: "cup.and.saucer.fill",
+            tintHex: "23766E",
+            sortOrder: 10,
+            isSystem: false
+        )
+        database.container.mainContext.insert(category)
+        try database.container.mainContext.save()
+
+        let descriptors = database.recognitionCategoryDescriptors()
+        XCTAssertTrue(descriptors.contains {
+            $0.id == "custom.coffee" && $0.name == "咖啡" && $0.kind == .expense
+        })
+    }
+
+    private func makeRecognition(
+        occurredAt: Date = Date(),
+        paymentChannel: String? = "alipay"
+    ) -> ValidatedRecognition {
         ValidatedRecognition(
             kind: .expense,
             amountMinor: 2_800,
@@ -76,7 +110,7 @@ final class AppDatabaseTests: XCTestCase {
             merchant: "Daisy 测试咖啡",
             categoryID: "expense.food",
             occurredAt: occurredAt,
-            paymentChannel: "alipay",
+            paymentChannel: paymentChannel,
             paymentMethodHint: nil,
             orderIDHint: nil,
             note: nil,

@@ -122,7 +122,15 @@ struct AIServiceSettingsView: View {
             } header: {
                 Text("验证")
             } footer: {
-                Text("Daisy 会发送一张内置的虚拟付款图。只有测试通过的模型才建议用于自动入账。")
+                Text("Daisy 会发送一张内置的虚拟付款图。未通过测试的模型，真实识别结果只能进入待确认，不能自动入账。")
+            }
+
+            Section("隐私边界") {
+                Label("API Key 仅保存在这台 iPhone 的 Keychain", systemImage: "key.fill")
+                Label("账本留在本机，不会上传到 Daisy 服务器", systemImage: "iphone")
+                Label("截图会直接发送到上方 URL 对应的服务", systemImage: "arrow.up.forward.app")
+            } footer: {
+                Text("第三方 AI 服务可能保留请求或用于训练，其政策不受 Daisy 控制。请只配置你信任的服务，并避免公开暴露本地 Ollama。")
             }
 
             Section("快速配置") {

@@ -71,6 +71,32 @@ final class LedgerTransaction {
     }
 }
 
+struct SavedTransaction: Sendable {
+    let id: UUID
+    let merchant: String
+    let amountMinor: Int64
+    let currencyCode: String
+    let currencyExponent: Int
+    let accountID: UUID?
+
+    init(_ transaction: LedgerTransaction) {
+        id = transaction.id
+        merchant = transaction.merchant
+        amountMinor = transaction.amountMinor
+        currencyCode = transaction.currencyCode
+        currencyExponent = transaction.currencyExponent
+        accountID = transaction.accountID
+    }
+
+    var money: Money {
+        Money(
+            minorUnits: amountMinor,
+            currencyCode: currencyCode,
+            exponent: currencyExponent
+        )
+    }
+}
+
 @Model
 final class Account {
     @Attribute(.unique) var id: UUID

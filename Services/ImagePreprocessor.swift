@@ -5,7 +5,8 @@ enum ImagePreprocessor {
     static func prepareJPEG(
         from data: Data,
         maxDimension: CGFloat = 1600,
-        compressionQuality: CGFloat = 0.76
+        compressionQuality: CGFloat = 0.76,
+        maxByteCount: Int = 1_500_000
     ) throws -> Data {
         guard let image = UIImage(data: data), image.size.width > 8, image.size.height > 8 else {
             throw RecognitionError.imageUnreadable
@@ -27,10 +28,14 @@ enum ImagePreprocessor {
             context.fill(CGRect(origin: .zero, size: target))
             image.draw(in: CGRect(origin: .zero, size: target))
         }
-        guard let encoded = rendered.jpegData(compressionQuality: compressionQuality), !encoded.isEmpty else {
-            throw RecognitionError.imageUnreadable
+        for quality in [compressionQuality, 0.60, 0.45] {
+            if let encoded = rendered.jpegData(compressionQuality: quality),
+               !encoded.isEmpty,
+               encoded.count <= maxByteCount {
+                return encoded
+            }
         }
-        return encoded
+        throw RecognitionError.imageTooLarge
     }
 }
 

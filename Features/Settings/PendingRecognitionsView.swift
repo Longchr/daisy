@@ -98,6 +98,8 @@ struct PendingRecognitionsView: View {
         case "model_not_found": "所选模型不存在"
         case "vision_not_supported": "模型不支持图片识别"
         case "timeout": "AI 服务响应超时"
+        case "tls_failure": "AI 服务证书校验失败"
+        case "image_too_large": "截图压缩后仍然过大"
         case "invalid_response": "AI 返回格式不正确"
         case "missing_amount": "未识别到可信金额"
         case "unsupported_currency": "识别到不支持的币种"

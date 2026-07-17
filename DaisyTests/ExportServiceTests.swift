@@ -34,4 +34,76 @@ final class ExportServiceTests: XCTestCase {
         let text = try String(contentsOf: url, encoding: .utf8)
         XCTAssertTrue(text.contains("\"A, \"\"B\"\"\""))
     }
+
+    func testRejectsBackupFromFutureSchemaVersion() throws {
+        let backup = DaisyBackup(
+            schemaVersion: ExportService.currentSchemaVersion + 1,
+            createdAt: Date(),
+            transactions: [],
+            accounts: [],
+            categories: [],
+            budgets: []
+        )
+
+        XCTAssertThrowsError(try ExportService.decodeBackup(try encode(backup))) { error in
+            XCTAssertEqual(error as? ExportService.BackupError, .unsupportedVersion)
+        }
+    }
+
+    func testRejectsNegativeAmountInBackup() throws {
+        let invalid = LedgerTransaction(
+            kind: .expense,
+            amountMinor: -100,
+            merchant: "无效记录",
+            categoryID: "expense.other"
+        )
+        let backup = DaisyBackup(
+            schemaVersion: ExportService.currentSchemaVersion,
+            createdAt: Date(),
+            transactions: [TransactionExportRecord(invalid)],
+            accounts: [],
+            categories: [],
+            budgets: []
+        )
+
+        XCTAssertThrowsError(try ExportService.decodeBackup(try encode(backup))) { error in
+            XCTAssertEqual(error as? ExportService.BackupError, .invalidRecord)
+        }
+    }
+
+    func testRejectsDuplicateTransactionIDsInBackup() throws {
+        let id = UUID()
+        let first = LedgerTransaction(
+            id: id,
+            kind: .expense,
+            amountMinor: 100,
+            merchant: "第一笔",
+            categoryID: "expense.other"
+        )
+        let second = LedgerTransaction(
+            id: id,
+            kind: .expense,
+            amountMinor: 200,
+            merchant: "第二笔",
+            categoryID: "expense.other"
+        )
+        let backup = DaisyBackup(
+            schemaVersion: ExportService.currentSchemaVersion,
+            createdAt: Date(),
+            transactions: [TransactionExportRecord(first), TransactionExportRecord(second)],
+            accounts: [],
+            categories: [],
+            budgets: []
+        )
+
+        XCTAssertThrowsError(try ExportService.decodeBackup(try encode(backup))) { error in
+            XCTAssertEqual(error as? ExportService.BackupError, .invalidRecord)
+        }
+    }
+
+    private func encode(_ backup: DaisyBackup) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(backup)
+    }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
-struct AIConfiguration: Codable, Equatable {
-    enum JSONMode: String, Codable, CaseIterable, Identifiable {
+struct AIConfiguration: Codable, Equatable, Sendable {
+    enum JSONMode: String, Codable, CaseIterable, Identifiable, Sendable {
         case automatic
         case responseFormat
         case promptOnly
@@ -68,7 +68,7 @@ enum AIConfigurationStore {
     }
 }
 
-struct AIModel: Codable, Identifiable, Hashable {
+struct AIModel: Codable, Identifiable, Hashable, Sendable {
     let id: String
     let object: String?
     let ownedBy: String?

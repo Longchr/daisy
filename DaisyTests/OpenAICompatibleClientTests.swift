@@ -71,6 +71,89 @@ final class OpenAICompatibleClientTests: XCTestCase {
         }
     }
 
+    func testUnrelatedBadRequestDoesNotRetryWithoutResponseFormat() async {
+        var requestCount = 0
+        MockURLProtocol.requestHandler = { request in
+            requestCount += 1
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!,
+                Data("invalid image payload".utf8)
+            )
+        }
+
+        let client = OpenAICompatibleClient(session: makeSession())
+        do {
+            _ = try await client.recognize(
+                imageData: Data([0x01]),
+                ocrText: "¥28.00",
+                categories: [("expense.food", "餐饮")],
+                configuration: configuration(),
+                apiKey: ""
+            )
+            XCTFail("Expected request failure")
+        } catch let error as RecognitionError {
+            guard case .network = error else {
+                return XCTFail("Expected network-mapped HTTP 400, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(requestCount, 1)
+    }
+
+    func testServerErrorRetriesOnceThenSucceeds() async throws {
+        var requestCount = 0
+        MockURLProtocol.requestHandler = { request in
+            requestCount += 1
+            if requestCount == 1 {
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!,
+                    Data("temporarily unavailable".utf8)
+                )
+            }
+
+            let modelJSON = #"{"transaction":{"type":"expense","amount_minor":2800,"currency":"CNY","currency_exponent":2,"merchant":"重试咖啡","category_id":"expense.food","occurred_at":null,"payment_channel":null,"payment_method_hint":null,"order_id_hint":null,"note":null},"confidence":{"overall":0.96},"evidence":null,"warnings":[]}"#
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                try Self.chatResponse(content: modelJSON)
+            )
+        }
+
+        let client = OpenAICompatibleClient(session: makeSession())
+        let result = try await client.recognize(
+            imageData: Data([0x01]),
+            ocrText: "¥28.00",
+            categories: [("expense.food", "餐饮")],
+            configuration: configuration(),
+            apiKey: ""
+        )
+        XCTAssertEqual(result.payload.transaction.merchant, "重试咖啡")
+        XCTAssertEqual(requestCount, 2)
+    }
+
+    func testDecodesArrayMessageContentFromCompatibleProvider() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let modelJSON = #"{"transaction":{"type":"expense","amount_minor":2800,"currency":"CNY","currency_exponent":2,"merchant":"数组内容","category_id":"expense.food","occurred_at":null,"payment_channel":null,"payment_method_hint":null,"order_id_hint":null,"note":null},"confidence":{"overall":0.96},"evidence":null,"warnings":[]}"#
+            let encoded = try JSONEncoder().encode(modelJSON)
+            let text = String(decoding: encoded, as: UTF8.self)
+            let response = "{\"choices\":[{\"message\":{\"content\":[{\"type\":\"text\",\"text\":\(text)}]}}]}"
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                Data(response.utf8)
+            )
+        }
+
+        let client = OpenAICompatibleClient(session: makeSession())
+        let result = try await client.recognize(
+            imageData: Data([0x01]),
+            ocrText: "¥28.00",
+            categories: [("expense.food", "餐饮")],
+            configuration: configuration(),
+            apiKey: ""
+        )
+        XCTAssertEqual(result.payload.transaction.merchant, "数组内容")
+    }
+
     private func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
@@ -87,6 +170,12 @@ final class OpenAICompatibleClientTests: XCTestCase {
             localNetworkEnabled: false,
             visionVerified: true
         )
+    }
+
+    private static func chatResponse(content: String) throws -> Data {
+        let encoded = try JSONEncoder().encode(content)
+        let text = String(decoding: encoded, as: UTF8.self)
+        return Data("{\"choices\":[{\"message\":{\"content\":\(text)}}]}".utf8)
     }
 }
 

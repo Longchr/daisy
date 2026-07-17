@@ -5,8 +5,10 @@ enum RecognitionValidator {
         _ payload: RecognitionPayload,
         ocrText: String,
         allowedCategoryIDs: Set<String>,
+        categoryKinds: [String: TransactionKind] = [:],
         autoSaveThreshold: Double,
         highValueThresholdMinor: Int64,
+        forcedReviewWarnings: [String] = [],
         now: Date = Date()
     ) throws -> ValidatedRecognition {
         let source = payload.transaction
@@ -18,13 +20,18 @@ enum RecognitionValidator {
             throw RecognitionError.unsupportedCurrency
         }
         let exponent = source.currencyExponent ?? (currency == "JPY" ? 0 : 2)
+        guard (0...4).contains(exponent) else { throw RecognitionError.invalidResponse }
         let merchant = sanitize(source.merchant, fallback: "未识别商户", maxLength: 80)
 
-        var warnings = payload.warnings ?? []
+        var warnings = (payload.warnings ?? []) + forcedReviewWarnings
         var categoryID = source.categoryID ?? defaultCategory(for: kind)
-        if !allowedCategoryIDs.contains(categoryID) {
+        let categoryKind = categoryKinds[categoryID]
+        let kindMatches = categoryKind == nil
+            || categoryKind == kind
+            || (kind == .refund && categoryKind == .income)
+        if !allowedCategoryIDs.contains(categoryID) || !kindMatches {
             categoryID = defaultCategory(for: kind)
-            warnings.append("模型返回了未知分类，已使用默认分类")
+            warnings.append("模型返回的分类无效，已使用默认分类")
         }
 
         let occurredAt = parseDate(source.occurredAt) ?? now
