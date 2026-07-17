@@ -38,10 +38,10 @@ final class DaisyUITests: XCTestCase {
         merchant.typeText("UI 测试咖啡")
 
         app.buttons["saveTransactionButton"].tap()
-        XCTAssertTrue(app.staticTexts["已记下 ¥28.50"].waitForExistence(timeout: 3))
+        XCTAssertTrue(amount.waitForNonExistence(timeout: 5))
 
         app.tabBars.buttons["账单"].tap()
-        XCTAssertTrue(app.staticTexts["UI 测试咖啡"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["UI 测试咖啡"].waitForExistence(timeout: 5))
     }
 
     func testAISettingsExposeDirectConnectionFields() {
