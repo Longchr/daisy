@@ -28,7 +28,7 @@ struct DaisyApp: App {
                 .environmentObject(appLock)
                 .preferredColorScheme(settings.colorScheme.preference)
                 .task {
-                    await database.seedIfNeeded()
+                    database.seedIfNeeded()
                     if settings.requireBiometrics {
                         await appLock.unlock()
                     }

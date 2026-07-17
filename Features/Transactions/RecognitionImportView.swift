@@ -142,7 +142,7 @@ struct RecognitionImportView: View {
                     phase = .review(outcome.recognition, outcome.idempotencyKey)
                 }
             } else {
-                let saved = try await AppDatabase.shared.saveRecognition(
+                let saved = try AppDatabase.shared.saveRecognition(
                     outcome.recognition,
                     idempotencyKey: outcome.idempotencyKey
                 )

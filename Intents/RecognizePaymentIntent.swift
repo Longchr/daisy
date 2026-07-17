@@ -9,10 +9,6 @@ struct RecognizePaymentIntent: AppIntent {
     @Parameter(title: "付款截图")
     var image: IntentFile
 
-    static var parameterSummary: some ParameterSummary {
-        Summary("识别并记录 \(.$image)")
-    }
-
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let imageData = image.data
         let idempotencyKey = RecognitionFingerprint.make(from: imageData)
