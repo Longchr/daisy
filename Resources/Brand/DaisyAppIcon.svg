@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B2033"/>
+      <stop offset="0.58" stop-color="#12384A"/>
+      <stop offset="1" stop-color="#1E6B65"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.7" cy="0.76" r="0.7">
+      <stop offset="0" stop-color="#69AFA5" stop-opacity="0.36"/>
+      <stop offset="1" stop-color="#69AFA5" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="petal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFDF6"/>
+      <stop offset="1" stop-color="#DCEAE6"/>
+    </linearGradient>
+    <radialGradient id="center" cx="0.35" cy="0.3" r="0.75">
+      <stop offset="0" stop-color="#F5D985"/>
+      <stop offset="1" stop-color="#D7A947"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#06131F" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+  <g opacity="0.1" fill="none" stroke="#CFE4DF" stroke-width="8">
+    <path d="M134 735 C260 653 320 752 435 657 S640 520 890 326"/>
+    <path d="M134 803 C275 720 365 808 492 700 S692 542 890 437"/>
+  </g>
+  <g transform="translate(512 492)" filter="url(#shadow)">
+    <g fill="url(#petal)">
+      <ellipse rx="104" ry="206" transform="translate(0 -200) rotate(0)"/>
+      <ellipse rx="104" ry="206" transform="translate(142 -142) rotate(45)"/>
+      <ellipse rx="104" ry="206" transform="translate(200 0) rotate(90)"/>
+      <ellipse rx="104" ry="206" transform="translate(142 142) rotate(135)"/>
+      <ellipse rx="104" ry="206" transform="translate(0 200) rotate(180)"/>
+      <ellipse rx="104" ry="206" transform="translate(-142 142) rotate(225)"/>
+      <ellipse rx="104" ry="206" transform="translate(-200 0) rotate(270)"/>
+      <ellipse rx="104" ry="206" transform="translate(-142 -142) rotate(315)"/>
+    </g>
+    <circle r="128" fill="url(#center)"/>
+    <circle r="72" fill="none" stroke="#FFF2B8" stroke-opacity="0.52" stroke-width="7"/>
+    <circle cx="-35" cy="-37" r="19" fill="#FFF7CE" fill-opacity="0.55"/>
+  </g>
+</svg>

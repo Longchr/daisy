@@ -1,0 +1,176 @@
+import SwiftUI
+import SwiftData
+
+struct SettingsView: View {
+    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var appLock: AppLockController
+    @Query private var drafts: [RecognitionDraft]
+
+    private var aiConfiguration: AIConfiguration { AIConfigurationStore.load() }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    NavigationLink {
+                        AIServiceSettingsView()
+                    } label: {
+                        SettingsRow(
+                            symbol: "sparkles.rectangle.stack.fill",
+                            tint: DaisyTheme.accent,
+                            title: "AI 识别服务",
+                            detail: aiConfiguration.visionVerified ? "已验证" : "未配置"
+                        )
+                    }
+
+                    NavigationLink {
+                        AutomationGuideView()
+                    } label: {
+                        SettingsRow(
+                            symbol: "hand.tap.fill",
+                            tint: Color(hex: "5B8DEF"),
+                            title: "背面轻点与快捷指令",
+                            detail: "设置指南"
+                        )
+                    }
+
+                    if drafts.contains(where: {
+                        $0.statusRaw == RecognitionDraftStatus.needsReview.rawValue
+                            || $0.statusRaw == RecognitionDraftStatus.failed.rawValue
+                    }) {
+                        NavigationLink {
+                            PendingRecognitionsView()
+                        } label: {
+                            SettingsRow(
+                                symbol: "tray.full.fill",
+                                tint: DaisyTheme.warning,
+                                title: "识别记录",
+                                detail: recognitionRecordDetail
+                            )
+                        }
+                    }
+                } header: {
+                    Text("自动记账")
+                }
+
+                Section("隐私与外观") {
+                    Toggle(isOn: $settings.hideAmounts) {
+                        Label("隐藏金额", systemImage: "eye.slash.fill")
+                    }
+                    Toggle(isOn: $settings.requireBiometrics) {
+                        Label("Face ID 锁", systemImage: "faceid")
+                    }
+                    .onChange(of: settings.requireBiometrics) { _, enabled in
+                        if enabled {
+                            Task { await appLock.unlock() }
+                        }
+                    }
+
+                    Picker("外观", selection: $settings.colorScheme) {
+                        ForEach(AppColorScheme.allCases) { scheme in
+                            Text(scheme.title).tag(scheme)
+                        }
+                    }
+                }
+
+                Section("账本配置") {
+                    NavigationLink {
+                        BudgetSettingsView()
+                    } label: {
+                        Label("月度预算", systemImage: "gauge.with.dots.needle.67percent")
+                    }
+                    NavigationLink {
+                        AccountsView()
+                    } label: {
+                        Label("账户", systemImage: "creditcard.fill")
+                    }
+                    NavigationLink {
+                        CategoriesView()
+                    } label: {
+                        Label("分类", systemImage: "square.grid.2x2.fill")
+                    }
+                }
+
+                Section("识别安全") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("自动入账置信度")
+                            Spacer()
+                            Text(settings.autoSaveThreshold.formatted(.percent.precision(.fractionLength(0))))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $settings.autoSaveThreshold, in: 0.75...0.98, step: 0.01)
+                            .tint(DaisyTheme.accent)
+                    }
+                    Stepper(value: $settings.highValueThresholdMinor, in: 10_000...500_000, step: 10_000) {
+                        LabeledContent("大额确认", value: Money(minorUnits: settings.highValueThresholdMinor).formatted())
+                    }
+                }
+
+                Section("数据") {
+                    NavigationLink {
+                        DataManagementView()
+                    } label: {
+                        Label("导出、备份与恢复", systemImage: "externaldrive.fill")
+                    }
+                }
+
+                Section {
+                    HStack(spacing: 14) {
+                        Image(systemName: "camera.macro")
+                            .font(.title2.weight(.medium))
+                            .foregroundStyle(DaisyTheme.accent)
+                            .frame(width: 44, height: 44)
+                            .background(DaisyTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Daisy")
+                                .font(.headline)
+                            Text("私人、本地、安静地记好每一笔")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .navigationTitle("设置")
+        }
+    }
+
+    private var recognitionRecordDetail: String {
+        let reviewCount = drafts.filter {
+            $0.statusRaw == RecognitionDraftStatus.needsReview.rawValue
+        }.count
+        let failedCount = drafts.filter {
+            $0.statusRaw == RecognitionDraftStatus.failed.rawValue
+        }.count
+        if reviewCount > 0 { return "\(reviewCount) 笔待确认" }
+        return "\(failedCount) 条失败"
+    }
+}
+
+private struct SettingsRow: View {
+    let symbol: String
+    let tint: Color
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(tint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            Text(title)
+            Spacer()
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+}

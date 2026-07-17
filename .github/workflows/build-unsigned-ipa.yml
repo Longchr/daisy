@@ -1,0 +1,51 @@
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build unsigned device application
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project Daisy.xcodeproj \
+            -scheme Daisy \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          APP_PATH=$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name 'Daisy.app' -print -quit)
+          test -n "$APP_PATH"
+          mkdir -p build/Payload
+          ditto "$APP_PATH" build/Payload/Daisy.app
+          cd build
+          /usr/bin/zip -qry Daisy-unsigned.ipa Payload
+          test -s Daisy-unsigned.ipa
+
+      - name: Upload AltStore-ready artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Daisy-unsigned-ipa
+          path: build/Daisy-unsigned.ipa
+          retention-days: 1
+          if-no-files-found: error
