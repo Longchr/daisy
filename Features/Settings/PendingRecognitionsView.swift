@@ -117,7 +117,11 @@ private struct PendingReviewContainer: View {
     let recognition: ValidatedRecognition
 
     var body: some View {
-        RecognitionReviewView(recognition: recognition) {
+        RecognitionReviewView(
+            recognition: recognition,
+            source: .aiScreenshot,
+            idempotencyKey: draft.idempotencyKey
+        ) {
             modelContext.delete(draft)
             try? modelContext.save()
             dismiss()

@@ -7,7 +7,7 @@ struct RecognitionImportView: View {
     private enum Phase {
         case selecting
         case processing
-        case review(ValidatedRecognition)
+        case review(ValidatedRecognition, String)
         case failed(String)
     }
 
@@ -25,8 +25,12 @@ struct RecognitionImportView: View {
                     selectionView
                 case .processing:
                     processingView
-                case .review(let recognition):
-                    RecognitionReviewView(recognition: recognition) {
+                case .review(let recognition, let idempotencyKey):
+                    RecognitionReviewView(
+                        recognition: recognition,
+                        source: .photoImport,
+                        idempotencyKey: idempotencyKey
+                    ) {
                         dismiss()
                     }
                 case .failed(let message):
@@ -134,7 +138,9 @@ struct RecognitionImportView: View {
             previewImage = UIImage(data: data)
             let outcome = try await RecognitionEngine.shared.recognize(imageData: data)
             if outcome.recognition.needsReview {
-                withAnimation(.snappy) { phase = .review(outcome.recognition) }
+                withAnimation(.snappy) {
+                    phase = .review(outcome.recognition, outcome.idempotencyKey)
+                }
             } else {
                 let saved = try await AppDatabase.shared.saveRecognition(
                     outcome.recognition,
@@ -156,30 +162,55 @@ struct RecognitionReviewView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var appState: AppState
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
+    @Query(sort: \Account.sortOrder) private var accounts: [Account]
+    @Query(sort: \LedgerTransaction.occurredAt, order: .reverse) private var transactions: [LedgerTransaction]
 
     let recognition: ValidatedRecognition
+    let source: TransactionSource
+    let idempotencyKey: String?
     let onSaved: () -> Void
 
     @State private var amountText: String
     @State private var merchant: String
     @State private var kind: TransactionKind
     @State private var categoryID: String
+    @State private var selectedAccountID: UUID?
+    @State private var selectedDestinationAccountID: UUID?
     @State private var occurredAt: Date
     @State private var note: String
 
-    init(recognition: ValidatedRecognition, onSaved: @escaping () -> Void) {
+    init(
+        recognition: ValidatedRecognition,
+        source: TransactionSource = .photoImport,
+        idempotencyKey: String? = nil,
+        onSaved: @escaping () -> Void
+    ) {
         self.recognition = recognition
+        self.source = source
+        self.idempotencyKey = idempotencyKey
         self.onSaved = onSaved
         _amountText = State(initialValue: NSDecimalNumber(decimal: Money(minorUnits: recognition.amountMinor).decimalValue).stringValue)
         _merchant = State(initialValue: recognition.merchant)
         _kind = State(initialValue: recognition.kind)
         _categoryID = State(initialValue: recognition.categoryID)
+        _selectedAccountID = State(initialValue: nil)
+        _selectedDestinationAccountID = State(initialValue: nil)
         _occurredAt = State(initialValue: recognition.occurredAt)
         _note = State(initialValue: recognition.note ?? "")
     }
 
     private var matchingCategories: [LedgerCategory] {
         categories.filter { $0.kind == kind || (kind == .refund && $0.kind == .income) }
+    }
+
+    private var activeAccounts: [Account] { accounts.filter { !$0.isArchived } }
+
+    private var canSave: Bool {
+        guard (Money(decimalString: amountText)?.minorUnits ?? 0) > 0 else { return false }
+        guard kind == .transfer else { return true }
+        return selectedAccountID != nil
+            && selectedDestinationAccountID != nil
+            && selectedAccountID != selectedDestinationAccountID
     }
 
     var body: some View {
@@ -210,6 +241,22 @@ struct RecognitionReviewView: View {
                         Label(category.name, systemImage: category.symbol).tag(category.id)
                     }
                 }
+                Picker("账户", selection: $selectedAccountID) {
+                    Text("未指定").tag(Optional<UUID>.none)
+                    ForEach(activeAccounts) { account in
+                        Label(account.name, systemImage: account.symbol)
+                            .tag(Optional(account.id))
+                    }
+                }
+                if kind == .transfer {
+                    Picker("转入账户", selection: $selectedDestinationAccountID) {
+                        Text("请选择").tag(Optional<UUID>.none)
+                        ForEach(activeAccounts.filter { $0.id != selectedAccountID }) { account in
+                            Label(account.name, systemImage: account.symbol)
+                                .tag(Optional(account.id))
+                        }
+                    }
+                }
                 DatePicker("时间", selection: $occurredAt)
                 TextField("备注", text: $note, axis: .vertical)
             }
@@ -227,28 +274,65 @@ struct RecognitionReviewView: View {
                 Button("确认并保存", action: save)
                     .frame(maxWidth: .infinity)
                     .fontWeight(.semibold)
-                    .disabled((Money(decimalString: amountText)?.minorUnits ?? 0) <= 0)
+                    .disabled(!canSave)
                     .accessibilityIdentifier("confirmRecognitionButton")
             }
         }
+        .onAppear(perform: selectDefaultAccounts)
         .onChange(of: kind) { _, _ in
             if !matchingCategories.contains(where: { $0.id == categoryID }) {
                 categoryID = matchingCategories.first?.id ?? "expense.other"
             }
+            selectDefaultAccounts()
+        }
+        .onChange(of: selectedAccountID) { _, _ in
+            if kind == .transfer { selectDefaultDestinationAccount() }
+        }
+    }
+
+    private func selectDefaultAccounts() {
+        if selectedAccountID == nil {
+            selectedAccountID = AccountResolver.resolveID(
+                accounts: activeAccounts,
+                paymentChannel: recognition.paymentChannel,
+                paymentMethodHint: recognition.paymentMethodHint
+            )
+        }
+        selectDefaultDestinationAccount()
+    }
+
+    private func selectDefaultDestinationAccount() {
+        guard kind == .transfer else {
+            selectedDestinationAccountID = nil
+            return
+        }
+        if selectedDestinationAccountID == nil
+            || selectedDestinationAccountID == selectedAccountID
+            || activeAccounts.contains(where: { $0.id == selectedDestinationAccountID }) == false {
+            selectedDestinationAccountID = activeAccounts.first { $0.id != selectedAccountID }?.id
         }
     }
 
     private func save() {
         guard let money = Money(decimalString: amountText), money.minorUnits > 0 else { return }
+        if let idempotencyKey,
+           transactions.contains(where: { $0.idempotencyKey == idempotencyKey }) {
+            appState.presentToast("这张截图已经记过账")
+            onSaved()
+            return
+        }
         let item = LedgerTransaction(
             kind: kind,
             amountMinor: money.minorUnits,
             merchant: merchant.trimmingCharacters(in: .whitespacesAndNewlines),
             categoryID: categoryID,
+            accountID: selectedAccountID,
+            destinationAccountID: kind == .transfer ? selectedDestinationAccountID : nil,
             occurredAt: occurredAt,
             note: note,
-            source: .photoImport,
-            confidence: recognition.confidence
+            source: source,
+            confidence: recognition.confidence,
+            idempotencyKey: idempotencyKey
         )
         modelContext.insert(item)
         do {
