@@ -10,6 +10,7 @@ struct TransactionDetailView: View {
 
     private var category: LedgerCategory? { categories.first { $0.id == transaction.categoryID } }
     private var account: Account? { accounts.first { $0.id == transaction.accountID } }
+    private var destinationAccount: Account? { accounts.first { $0.id == transaction.destinationAccountID } }
 
     var body: some View {
         List {
@@ -35,6 +36,9 @@ struct TransactionDetailView: View {
                 LabeledContent("类型", value: transaction.kind.title)
                 LabeledContent("分类", value: category?.name ?? "其他")
                 LabeledContent("账户", value: account?.name ?? "未指定")
+                if transaction.kind == .transfer {
+                    LabeledContent("转入账户", value: destinationAccount?.name ?? "未指定")
+                }
                 LabeledContent("时间", value: transaction.occurredAt.formatted(date: .abbreviated, time: .shortened))
                 LabeledContent("来源", value: transaction.source == .aiScreenshot ? "AI 截图识别" : "手动记录")
                 if let confidence = transaction.confidence {

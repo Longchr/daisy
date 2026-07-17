@@ -8,6 +8,8 @@ struct TransactionExportRecord: Codable {
     let currencyExponent: Int
     let merchant: String
     let categoryID: String
+    let accountID: UUID?
+    let destinationAccountID: UUID?
     let occurredAt: Date
     let note: String
     let source: String
@@ -22,6 +24,8 @@ struct TransactionExportRecord: Codable {
         currencyExponent = transaction.currencyExponent
         merchant = transaction.merchant
         categoryID = transaction.categoryID
+        accountID = transaction.accountID
+        destinationAccountID = transaction.destinationAccountID
         occurredAt = transaction.occurredAt
         note = transaction.note
         source = transaction.sourceRaw
@@ -114,7 +118,7 @@ enum ExportService {
     static let maximumBackupRecords = 100_000
 
     static func makeCSVFile(transactions: [LedgerTransaction]) throws -> URL {
-        var rows = ["id,type,amount_minor,currency,merchant,category_id,occurred_at,note,source"]
+        var rows = ["id,type,amount_minor,currency,merchant,category_id,account_id,destination_account_id,occurred_at,note,source"]
         let dateFormatter = ISO8601DateFormatter()
         for item in transactions {
             rows.append([
@@ -124,6 +128,8 @@ enum ExportService {
                 item.currencyCode,
                 escape(item.merchant),
                 item.categoryID,
+                item.accountID?.uuidString ?? "",
+                item.destinationAccountID?.uuidString ?? "",
                 dateFormatter.string(from: item.occurredAt),
                 escape(item.note),
                 item.sourceRaw

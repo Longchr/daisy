@@ -105,6 +105,8 @@ struct DataManagementView: View {
                     currencyExponent: record.currencyExponent,
                     merchant: record.merchant,
                     categoryID: record.categoryID,
+                    accountID: record.accountID,
+                    destinationAccountID: record.destinationAccountID,
                     occurredAt: record.occurredAt,
                     note: record.note,
                     source: TransactionSource(rawValue: record.source) ?? .manual,

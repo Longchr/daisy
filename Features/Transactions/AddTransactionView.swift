@@ -14,6 +14,7 @@ struct AddTransactionView: View {
     @State private var merchant = ""
     @State private var selectedCategoryID = ""
     @State private var selectedAccountID: UUID?
+    @State private var selectedDestinationAccountID: UUID?
     @State private var occurredAt = Date()
     @State private var note = ""
     @FocusState private var amountFocused: Bool
@@ -28,7 +29,14 @@ struct AddTransactionView: View {
     }
 
     private var parsedMoney: Money? { Money(decimalString: amountText) }
-    private var canSave: Bool { (parsedMoney?.minorUnits ?? 0) > 0 && !selectedCategoryID.isEmpty }
+    private var canSave: Bool {
+        let hasCoreFields = (parsedMoney?.minorUnits ?? 0) > 0 && !selectedCategoryID.isEmpty
+        guard kind == .transfer else { return hasCoreFields }
+        return hasCoreFields
+            && selectedAccountID != nil
+            && selectedDestinationAccountID != nil
+            && selectedAccountID != selectedDestinationAccountID
+    }
 
     var body: some View {
         NavigationStack {
@@ -75,6 +83,16 @@ struct AddTransactionView: View {
                         }
                     }
 
+                    if kind == .transfer {
+                        Picker("转入账户", selection: $selectedDestinationAccountID) {
+                            Text("请选择").tag(Optional<UUID>.none)
+                            ForEach(accounts.filter { !$0.isArchived && $0.id != selectedAccountID }) { account in
+                                Label(account.name, systemImage: account.symbol)
+                                    .tag(Optional(account.id))
+                            }
+                        }
+                    }
+
                     DatePicker("时间", selection: $occurredAt)
                 }
 
@@ -99,9 +117,16 @@ struct AddTransactionView: View {
             .onAppear {
                 selectDefaultCategory()
                 selectedAccountID = accounts.first?.id
+                selectDefaultDestinationAccount()
                 amountFocused = true
             }
-            .onChange(of: kind) { _, _ in selectDefaultCategory() }
+            .onChange(of: kind) { _, _ in
+                selectDefaultCategory()
+                selectDefaultDestinationAccount()
+            }
+            .onChange(of: selectedAccountID) { _, _ in
+                if kind == .transfer { selectDefaultDestinationAccount() }
+            }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -109,6 +134,20 @@ struct AddTransactionView: View {
 
     private func selectDefaultCategory() {
         selectedCategoryID = availableCategories.first?.id ?? ""
+    }
+
+    private func selectDefaultDestinationAccount() {
+        guard kind == .transfer else {
+            selectedDestinationAccountID = nil
+            return
+        }
+        if selectedDestinationAccountID == nil
+            || selectedDestinationAccountID == selectedAccountID
+            || accounts.first(where: { $0.id == selectedDestinationAccountID })?.isArchived != false {
+            selectedDestinationAccountID = accounts.first {
+                !$0.isArchived && $0.id != selectedAccountID
+            }?.id
+        }
     }
 
     private func save() {
@@ -120,6 +159,7 @@ struct AddTransactionView: View {
             merchant: merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallbackName : merchant,
             categoryID: selectedCategoryID,
             accountID: selectedAccountID,
+            destinationAccountID: kind == .transfer ? selectedDestinationAccountID : nil,
             occurredAt: occurredAt,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines)
         )

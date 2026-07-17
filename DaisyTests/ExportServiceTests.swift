@@ -3,12 +3,16 @@ import XCTest
 
 final class ExportServiceTests: XCTestCase {
     func testJSONRoundTripPreservesFinancialFields() throws {
+        let sourceAccountID = UUID(uuidString: "90E7E81F-A9C1-4F7B-A809-B46EC90CA1AD")!
+        let destinationAccountID = UUID(uuidString: "9E10672A-AF97-4B25-85CC-17AF6FA50FA7")!
         let transaction = LedgerTransaction(
             id: UUID(uuidString: "7CC22D98-2B93-4C27-9BC1-1993A8BA4D04")!,
-            kind: .expense,
+            kind: .transfer,
             amountMinor: 12_345,
             merchant: "测试商户",
-            categoryID: "expense.food",
+            categoryID: "transfer.account",
+            accountID: sourceAccountID,
+            destinationAccountID: destinationAccountID,
             note: "午餐",
             source: .aiScreenshot,
             confidence: 0.96,
@@ -21,6 +25,8 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(backup.transactions[0].merchant, "测试商户")
         XCTAssertEqual(backup.transactions[0].source, TransactionSource.aiScreenshot.rawValue)
         XCTAssertEqual(backup.transactions[0].idempotencyKey, "receipt-fingerprint")
+        XCTAssertEqual(backup.transactions[0].accountID, sourceAccountID)
+        XCTAssertEqual(backup.transactions[0].destinationAccountID, destinationAccountID)
     }
 
     func testCSVEscapesQuotesAndCommas() throws {
