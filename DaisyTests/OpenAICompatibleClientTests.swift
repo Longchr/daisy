@@ -24,7 +24,7 @@ final class OpenAICompatibleClientTests: XCTestCase {
         var requestCount = 0
         MockURLProtocol.requestHandler = { request in
             requestCount += 1
-            let body = try XCTUnwrap(request.httpBody)
+            let body = try Self.bodyData(from: request)
             let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
 
             if requestCount == 1 {
@@ -176,6 +176,29 @@ final class OpenAICompatibleClientTests: XCTestCase {
         let encoded = try JSONEncoder().encode(content)
         let text = String(decoding: encoded, as: UTF8.self)
         return Data("{\"choices\":[{\"message\":{\"content\":\(text)}}]}".utf8)
+    }
+
+    private static func bodyData(from request: URLRequest) throws -> Data {
+        if let body = request.httpBody {
+            return body
+        }
+
+        let stream = try XCTUnwrap(request.httpBodyStream)
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while true {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count < 0 {
+                throw stream.streamError ?? URLError(.cannotDecodeRawData)
+            }
+            if count == 0 {
+                return data
+            }
+            data.append(contentsOf: buffer.prefix(count))
+        }
     }
 }
 

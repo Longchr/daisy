@@ -20,8 +20,13 @@ final class DaisyUITests: XCTestCase {
     }
 
     func testManualTransactionFlow() {
-        app.buttons["addTransactionButton"].tap()
-        app.buttons["手动记账"].tap()
+        let addTransaction = app.buttons["addTransactionButton"]
+        XCTAssertTrue(addTransaction.waitForExistence(timeout: 5))
+        tapReliably(addTransaction)
+
+        let manualEntry = app.buttons["手动记账"]
+        XCTAssertTrue(manualEntry.waitForExistence(timeout: 3))
+        manualEntry.tap()
 
         let amount = app.textFields["amountField"]
         XCTAssertTrue(amount.waitForExistence(timeout: 3))
@@ -63,5 +68,13 @@ final class DaisyUITests: XCTestCase {
         app.buttons["onboardingOpenSettingsButton"].tap()
 
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 3))
+    }
+
+    private func tapReliably(_ element: XCUIElement) {
+        if element.isHittable {
+            element.tap()
+        } else {
+            element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
     }
 }
