@@ -1,16 +1,12 @@
 import AppIntents
 import Foundation
-import UniformTypeIdentifiers
 
 struct RecognizePaymentIntent: AppIntent {
     static var title: LocalizedStringResource = "识别付款截图"
     static var description = IntentDescription("识别付款成功页面并自动保存到 Daisy 本地账本。")
     static var openAppWhenRun = false
 
-    @Parameter(
-        title: "付款截图",
-        supportedContentTypes: [.image]
-    )
+    @Parameter(title: "付款截图")
     var image: IntentFile
 
     static var parameterSummary: some ParameterSummary {
