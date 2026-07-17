@@ -9,8 +9,7 @@ struct RecognizePaymentIntent: AppIntent {
 
     @Parameter(
         title: "付款截图",
-        supportedContentTypes: [.image],
-        inputConnectionBehavior: .connectToPreviousIntentResult
+        supportedContentTypes: [.image]
     )
     var image: IntentFile
 
