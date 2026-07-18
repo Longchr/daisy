@@ -140,6 +140,7 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(category.waitForExistence(timeout: 3))
         category.tap()
 
+        XCTAssertTrue(app.navigationBars["账单"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.tabBars.buttons["账单"].isSelected)
         XCTAssertTrue(app.descendants(matching: .any)["activeCategoryFilter"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["分析测试账单"].exists)
@@ -152,6 +153,7 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(addButton.waitForExistence(timeout: 3))
         addButton.tap()
 
+        app.textFields["recurringMerchantField"].tap()
         app.textFields["recurringMerchantField"].typeText("视频订阅")
         app.textFields["recurringAmountField"].tap()
         app.textFields["recurringAmountField"].typeText("25.00")
