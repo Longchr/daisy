@@ -40,7 +40,10 @@ enum ImagePreprocessor {
 }
 
 enum SampleReceiptFactory {
-    static func makeJPEG() -> Data {
+    static func makeJPEG(
+        amountText: String = "¥ 28.00",
+        merchant: String = "Daisy 测试咖啡"
+    ) -> Data {
         let size = CGSize(width: 750, height: 1200)
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
@@ -53,9 +56,9 @@ enum SampleReceiptFactory {
             card.fill()
 
             draw("支付成功", at: CGPoint(x: 270, y: 235), size: 38, weight: .semibold, color: .darkGray)
-            draw("¥ 28.00", at: CGPoint(x: 222, y: 345), size: 62, weight: .bold, color: .black)
+            draw(amountText, at: CGPoint(x: 222, y: 345), size: 62, weight: .bold, color: .black)
             draw("商户", at: CGPoint(x: 115, y: 520), size: 25, weight: .regular, color: .gray)
-            draw("Daisy 测试咖啡", at: CGPoint(x: 355, y: 520), size: 27, weight: .medium, color: .darkGray)
+            draw(merchant, at: CGPoint(x: 355, y: 520), size: 27, weight: .medium, color: .darkGray)
             draw("付款方式", at: CGPoint(x: 115, y: 605), size: 25, weight: .regular, color: .gray)
             draw("银行卡(1234)", at: CGPoint(x: 382, y: 605), size: 27, weight: .medium, color: .darkGray)
             draw("2026-07-17 12:30", at: CGPoint(x: 255, y: 740), size: 24, weight: .regular, color: .gray)

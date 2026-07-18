@@ -79,6 +79,7 @@ struct PendingRecognitionsView: View {
             payload,
             ocrText: "",
             allowedCategoryIDs: Set(categories.map(\.id)),
+            categoryKinds: Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0.kind) }),
             autoSaveThreshold: 1,
             highValueThresholdMinor: .max
         )

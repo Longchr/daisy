@@ -1,4 +1,3 @@
-import AppIntents
 import SwiftUI
 import SwiftData
 import UIKit
@@ -14,10 +13,13 @@ struct DaisyApp: App {
     private let database: AppDatabase
 
     init() {
-        database = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--reset-ai-configuration") {
+            AIConfigurationStore.remove()
+        }
+        database = arguments.contains("--ui-testing")
             ? AppDatabase.uiTesting
             : AppDatabase.shared
-        DaisyShortcutsProvider.updateAppShortcutParameters()
     }
 
     var body: some Scene {

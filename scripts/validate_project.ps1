@@ -50,6 +50,17 @@ foreach ($relative in $productFiles) {
 $sourceSecrets = Get-ChildItem -Path $root -Filter '*.swift' -Recurse | Select-String -Pattern 'sk-[A-Za-z0-9_-]{16,}'
 if ($sourceSecrets) { throw 'A possible API key is present in Swift source.' }
 
+$intentSource = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $root 'Intents\RecognizePaymentIntent.swift')
+if ($intentSource -notmatch 'supportedTypeIdentifiers:\s*\["public\.image"\]') {
+    throw 'Payment screenshot intent must accept image content.'
+}
+if ($intentSource -notmatch 'inputConnectionBehavior:\s*\.connectToPreviousIntentResult') {
+    throw 'Payment screenshot intent must connect to the previous Shortcuts action output.'
+}
+if ($intentSource -match 'AppShortcutsProvider') {
+    throw 'The screenshot action must not be exposed as a misleading standalone App Shortcut.'
+}
+
 $icon = Get-Item -LiteralPath (Join-Path $root 'Resources\Assets.xcassets\AppIcon.appiconset\DaisyAppIcon.png')
 if ($icon.Length -lt 10000) { throw 'App icon is unexpectedly small.' }
 

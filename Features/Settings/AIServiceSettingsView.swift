@@ -13,6 +13,10 @@ struct AIServiceSettingsView: View {
 
     private let client = OpenAICompatibleClient()
 
+    private var canSave: Bool {
+        configuration.isConfigured && !isLoading
+    }
+
     init() {
         _configuration = State(initialValue: AIConfigurationStore.load())
         _apiKey = State(initialValue: AIConfigurationStore.apiKey())
@@ -21,6 +25,8 @@ struct AIServiceSettingsView: View {
     var body: some View {
         Form {
             Section {
+                LabeledContent("状态", value: configuration.status.title)
+                    .accessibilityIdentifier("aiConfigurationStatus")
                 TextField("配置名称", text: $configuration.name)
                 TextField("https://example.com/v1", text: $configuration.baseURL)
                     .keyboardType(.URL)
@@ -73,6 +79,7 @@ struct AIServiceSettingsView: View {
                     TextField("模型 ID", text: $configuration.modelID)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .accessibilityIdentifier("aiModelIDField")
                 } else {
                     Picker("选择模型", selection: $configuration.modelID) {
                         Text("请选择").tag("")
@@ -162,16 +169,18 @@ struct AIServiceSettingsView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") {
-                    saveConfiguration()
-                    dismiss()
+                    if saveConfiguration() {
+                        dismiss()
+                    }
                 }
                 .fontWeight(.semibold)
-                .disabled(configuration.baseURL.isEmpty || configuration.modelID.isEmpty)
+                .disabled(!canSave)
                 .accessibilityIdentifier("saveAIConfigurationButton")
             }
         }
         .onChange(of: configuration.baseURL) { _, _ in configuration.visionVerified = false }
         .onChange(of: configuration.modelID) { _, _ in configuration.visionVerified = false }
+        .onChange(of: apiKey) { _, _ in configuration.visionVerified = false }
     }
 
     @MainActor
@@ -196,17 +205,33 @@ struct AIServiceSettingsView: View {
     private func testVision() async {
         isLoading = true
         statusMessage = nil
+        var savedPendingConfiguration = false
         defer { isLoading = false }
         do {
-            let image = SampleReceiptFactory.makeJPEG()
+            var pendingConfiguration = configuration.normalized
+            pendingConfiguration.visionVerified = false
+            _ = try AIEndpointBuilder.endpoint(
+                baseURL: pendingConfiguration.baseURL,
+                path: "chat/completions",
+                localNetworkEnabled: pendingConfiguration.localNetworkEnabled
+            )
+            try AIConfigurationStore.save(pendingConfiguration, apiKey: apiKey)
+            savedPendingConfiguration = true
+            configuration = pendingConfiguration
+
+            let expectedAmount: Int64 = 3_742
+            let image = SampleReceiptFactory.makeJPEG(
+                amountText: "¥ 37.42",
+                merchant: "Daisy 视觉校验"
+            )
             let response = try await client.recognize(
                 imageData: image,
-                ocrText: "支付成功 ¥28.00 Daisy 测试咖啡",
+                ocrText: "视觉能力测试：金额与商户必须从图片读取。",
                 categories: [("expense.food", "餐饮"), ("expense.other", "其他支出")],
                 configuration: configuration,
                 apiKey: apiKey
             )
-            guard response.payload.transaction.amountMinor != nil else {
+            guard response.payload.transaction.amountMinor == expectedAmount else {
                 throw RecognitionError.modelDoesNotSupportVision
             }
             configuration.visionVerified = true
@@ -215,17 +240,30 @@ struct AIServiceSettingsView: View {
             statusIsError = false
         } catch {
             configuration.visionVerified = false
+            if savedPendingConfiguration {
+                try? AIConfigurationStore.save(configuration, apiKey: apiKey)
+            }
             statusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             statusIsError = true
         }
     }
 
-    private func saveConfiguration() {
+    @discardableResult
+    private func saveConfiguration() -> Bool {
         do {
-            try AIConfigurationStore.save(configuration, apiKey: apiKey)
+            let normalized = configuration.normalized
+            _ = try AIEndpointBuilder.endpoint(
+                baseURL: normalized.baseURL,
+                path: "models",
+                localNetworkEnabled: normalized.localNetworkEnabled
+            )
+            try AIConfigurationStore.save(normalized, apiKey: apiKey)
+            configuration = normalized
+            return true
         } catch {
-            statusMessage = "无法安全保存 API Key"
+            statusMessage = (error as? LocalizedError)?.errorDescription ?? "无法安全保存配置"
             statusIsError = true
+            return false
         }
     }
 }

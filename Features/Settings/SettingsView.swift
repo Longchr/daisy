@@ -5,8 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appLock: AppLockController
     @Query private var drafts: [RecognitionDraft]
-
-    private var aiConfiguration: AIConfiguration { AIConfigurationStore.load() }
+    @State private var aiConfiguration = AIConfigurationStore.load()
 
     var body: some View {
         NavigationStack {
@@ -19,7 +18,7 @@ struct SettingsView: View {
                             symbol: "sparkles.rectangle.stack.fill",
                             tint: DaisyTheme.accent,
                             title: "AI 识别服务",
-                            detail: aiConfiguration.visionVerified ? "已验证" : "未配置"
+                            detail: aiConfiguration.status.title
                         )
                     }
 
@@ -136,6 +135,12 @@ struct SettingsView: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
+            }
+            .onAppear {
+                aiConfiguration = AIConfigurationStore.load()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aiConfigurationDidChange)) { _ in
+                aiConfiguration = AIConfigurationStore.load()
             }
             .navigationTitle("设置")
         }

@@ -67,6 +67,51 @@ final class AppDatabaseTests: XCTestCase {
         )
     }
 
+    func testRetryUpdatesExistingFailedDraftToReview() throws {
+        let database = AppDatabase(inMemory: true)
+        let fingerprint = "retry-image"
+        _ = try database.createDraft(
+            recognition: nil,
+            rawData: nil,
+            idempotencyKey: fingerprint,
+            errorCode: "timeout"
+        )
+        let payloadData = Data("{\"transaction\":{}}".utf8)
+
+        _ = try database.createDraft(
+            recognition: makeRecognition(),
+            rawData: payloadData,
+            idempotencyKey: fingerprint
+        )
+
+        let drafts = try database.container.mainContext.fetch(FetchDescriptor<RecognitionDraft>())
+        XCTAssertEqual(drafts.count, 1)
+        XCTAssertEqual(drafts[0].statusRaw, RecognitionDraftStatus.needsReview.rawValue)
+        XCTAssertEqual(drafts[0].transactionJSON, payloadData)
+        XCTAssertNil(drafts[0].errorCode)
+    }
+
+    func testSuccessfulRetryRemovesPreviousFailureDraft() throws {
+        let database = AppDatabase(inMemory: true)
+        let fingerprint = "successful-retry"
+        _ = try database.createDraft(
+            recognition: nil,
+            rawData: nil,
+            idempotencyKey: fingerprint,
+            errorCode: "network"
+        )
+
+        _ = try database.saveRecognition(
+            makeRecognition(),
+            idempotencyKey: fingerprint
+        )
+
+        XCTAssertEqual(
+            try database.container.mainContext.fetchCount(FetchDescriptor<RecognitionDraft>()),
+            0
+        )
+    }
+
     func testRecognitionMapsAlipayChannelToDefaultAccount() throws {
         let database = AppDatabase(inMemory: true)
         let transaction = try database.saveRecognition(

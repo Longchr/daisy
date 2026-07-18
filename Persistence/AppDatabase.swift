@@ -55,6 +55,8 @@ final class AppDatabase {
             idempotencyKey: idempotencyKey,
             in: context
         ) {
+            removeDraft(idempotencyKey: idempotencyKey, in: context)
+            try context.save()
             return SavedTransaction(duplicate)
         }
 
@@ -73,6 +75,7 @@ final class AppDatabase {
             idempotencyKey: idempotencyKey
         )
         context.insert(transaction)
+        removeDraft(idempotencyKey: idempotencyKey, in: context)
         try context.save()
         return SavedTransaction(transaction)
     }
@@ -86,6 +89,14 @@ final class AppDatabase {
         let context = container.mainContext
         let drafts = (try? context.fetch(FetchDescriptor<RecognitionDraft>())) ?? []
         if let existing = drafts.first(where: { $0.idempotencyKey == idempotencyKey }) {
+            existing.statusRaw = recognition == nil
+                ? RecognitionDraftStatus.failed.rawValue
+                : RecognitionDraftStatus.needsReview.rawValue
+            existing.transactionJSON = rawData
+            existing.overallConfidence = recognition?.confidence
+            existing.errorCode = errorCode
+            existing.updatedAt = Date()
+            try context.save()
             return existing.id
         }
 
@@ -99,6 +110,14 @@ final class AppDatabase {
         context.insert(draft)
         try context.save()
         return draft.id
+    }
+
+    private func removeDraft(idempotencyKey: String?, in context: ModelContext) {
+        guard let idempotencyKey else { return }
+        let drafts = (try? context.fetch(FetchDescriptor<RecognitionDraft>())) ?? []
+        for draft in drafts where draft.idempotencyKey == idempotencyKey {
+            context.delete(draft)
+        }
     }
 
     private func findDuplicate(

@@ -6,7 +6,7 @@ final class DaisyUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["--ui-testing"]
+        app.launchArguments = ["--ui-testing", "--reset-ai-configuration"]
         app.launch()
     }
 
@@ -51,6 +51,47 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(app.secureTextFields["aiAPIKeyField"].exists)
         XCTAssertTrue(app.buttons["fetchModelsButton"].exists)
         XCTAssertTrue(app.buttons["testVisionButton"].exists)
+    }
+
+    func testAIConfigurationPersistsAndShowsConfiguredStatus() {
+        app.tabBars.buttons["设置"].tap()
+        XCTAssertTrue(app.staticTexts["未配置"].waitForExistence(timeout: 3))
+        app.staticTexts["AI 识别服务"].tap()
+
+        let baseURL = app.textFields["aiBaseURLField"]
+        XCTAssertTrue(baseURL.waitForExistence(timeout: 3))
+        baseURL.tap()
+        baseURL.typeText("https://example.com/v1/")
+
+        let apiKey = app.secureTextFields["aiAPIKeyField"]
+        apiKey.tap()
+        apiKey.typeText("daisy-ui-test-key")
+
+        let modelID = app.textFields["aiModelIDField"]
+        modelID.tap()
+        modelID.typeText("vision-test-model")
+
+        let save = app.buttons["saveAIConfigurationButton"]
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+
+        XCTAssertTrue(app.staticTexts["已配置"].waitForExistence(timeout: 3))
+        app.staticTexts["AI 识别服务"].tap()
+        XCTAssertEqual(app.textFields["aiBaseURLField"].value as? String, "https://example.com/v1")
+        XCTAssertEqual(app.textFields["aiModelIDField"].value as? String, "vision-test-model")
+
+        app.buttons["显示 API Key"].tap()
+        XCTAssertEqual(app.textFields["aiAPIKeyField"].value as? String, "daisy-ui-test-key")
+    }
+
+    func testAutomationGuideShowsScreenshotBeforeDaisyAction() {
+        app.tabBars.buttons["设置"].tap()
+        app.staticTexts["背面轻点与快捷指令"].tap()
+
+        XCTAssertTrue(app.staticTexts["1  截屏"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["2  识别付款截图"].exists)
+        XCTAssertTrue(app.staticTexts["Daisy 动作 · 付款截图 = 截屏"].exists)
+        XCTAssertTrue(app.links["openShortcutsButton"].exists || app.buttons["openShortcutsButton"].exists)
     }
 
     func testFirstRunOnboardingExplainsPrivacyAndOpensSettings() {
