@@ -144,7 +144,7 @@ final class DaisyUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["账单"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.tabBars.buttons["账单"].isSelected)
-        XCTAssertTrue(app.descendants(matching: .any)["activeCategoryFilter"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["餐饮"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["分析测试账单"].exists)
     }
 
