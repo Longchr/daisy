@@ -186,7 +186,10 @@ struct TransactionsView: View {
         clear: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 2) {
-            Label(title, systemImage: symbol)
+            Image(systemName: symbol)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(title)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier(filterIdentifier(for: accessibilityLabel))
