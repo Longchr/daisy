@@ -8,7 +8,7 @@
 2. macOS XcodeGen 工程生成。
 3. iOS Simulator Debug 编译。
 4. XCTest 单元测试。
-5. XCUITest 启动、手动记账、AI 配置保存/重开状态和 Keychain 回填流程。
+5. XCUITest 启动、手动记账，以及 AI URL/模型保存、返回和重开状态流程。
 6. iphoneos Release 无签名构建和 IPA 打包。
 
 ## 单元测试覆盖
@@ -33,6 +33,7 @@
 | 场景 | 预期 |
 |---|---|
 | App 未启动时运行快捷指令 | Intent 收图并给出结果横幅 |
+| 签名实机保存并重开 AI 配置 | URL、模型和 API Key 均保持；Key 不显示在设置摘要 |
 | 快捷指令仅含 Daisy 动作 | 明确提示未收到截屏，不产生账单 |
 | “截屏 → Daisy”参数连接 | Daisy 的“付款截图”显示为上一步“截屏”变量 |
 | App 前台/后台运行 | 不重复创建账单 |

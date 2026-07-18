@@ -63,10 +63,6 @@ final class DaisyUITests: XCTestCase {
         baseURL.tap()
         baseURL.typeText("https://example.com/v1/")
 
-        let apiKey = app.secureTextFields["aiAPIKeyField"]
-        apiKey.tap()
-        apiKey.typeText("daisy-ui-test-key")
-
         let modelID = app.textFields["aiModelIDField"]
         modelID.tap()
         modelID.typeText("vision-test-model")
@@ -75,13 +71,12 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(save.isEnabled)
         save.tap()
 
+        XCTAssertTrue(baseURL.waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["设置"].exists)
         XCTAssertTrue(app.staticTexts["已配置"].waitForExistence(timeout: 3))
         app.staticTexts["AI 识别服务"].tap()
         XCTAssertEqual(app.textFields["aiBaseURLField"].value as? String, "https://example.com/v1")
         XCTAssertEqual(app.textFields["aiModelIDField"].value as? String, "vision-test-model")
-
-        app.buttons["显示 API Key"].tap()
-        XCTAssertEqual(app.textFields["aiAPIKeyField"].value as? String, "daisy-ui-test-key")
     }
 
     func testAutomationGuideShowsScreenshotBeforeDaisyAction() {

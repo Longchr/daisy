@@ -13,13 +13,20 @@ enum KeychainStore {
             kSecAttrService as String: Bundle.main.bundleIdentifier ?? "Daisy",
             kSecAttrAccount as String: key
         ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: encoded,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess { return }
+        guard updateStatus == errSecItemNotFound else {
+            throw KeychainError.unhandled(updateStatus)
+        }
 
-        SecItemDelete(query as CFDictionary)
         var insert = query
-        insert[kSecValueData as String] = encoded
-        insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(insert as CFDictionary, nil)
-        guard status == errSecSuccess else { throw KeychainError.unhandled(status) }
+        for (key, value) in attributes { insert[key] = value }
+        let insertStatus = SecItemAdd(insert as CFDictionary, nil)
+        guard insertStatus == errSecSuccess else { throw KeychainError.unhandled(insertStatus) }
     }
 
     static func string(for key: String) -> String? {
