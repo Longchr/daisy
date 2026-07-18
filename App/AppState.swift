@@ -34,6 +34,7 @@ final class AppState: ObservableObject {
 
     enum SettingsDestination: Hashable {
         case budget(Date)
+        case recognitionRecords
     }
 
     struct Toast: Equatable {
@@ -66,6 +67,12 @@ final class AppState: ObservableObject {
     func showBudgetSettings(for month: Date) {
         settingsPath = NavigationPath()
         settingsPath.append(SettingsDestination.budget(month))
+        selectedTab = .settings
+    }
+
+    func showRecognitionRecords() {
+        settingsPath = NavigationPath()
+        settingsPath.append(SettingsDestination.recognitionRecords)
         selectedTab = .settings
     }
 

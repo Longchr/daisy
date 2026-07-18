@@ -3,6 +3,7 @@ import SwiftData
 
 struct PendingRecognitionsView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var settings: AppSettings
     @Query(sort: \RecognitionDraft.createdAt, order: .reverse) private var drafts: [RecognitionDraft]
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
 
@@ -32,8 +33,9 @@ struct PendingRecognitionsView: View {
                                     HStack {
                                         Text(recognition.merchant).font(.body.weight(.medium))
                                         Spacer()
-                                        Text(Money(minorUnits: recognition.amountMinor).formatted())
+                                        Text(settings.hideAmounts ? "••••" : Money(minorUnits: recognition.amountMinor).formatted())
                                             .font(.body.monospacedDigit().weight(.semibold))
+                                            .accessibilityLabel(settings.hideAmounts ? "金额已隐藏" : Money(minorUnits: recognition.amountMinor).formatted())
                                     }
                                     Text("置信度 \(recognition.confidence.formatted(.percent.precision(.fractionLength(0)))) · \(draft.createdAt.formatted(date: .abbreviated, time: .shortened))")
                                         .font(.caption)
@@ -68,7 +70,7 @@ struct PendingRecognitionsView: View {
                 }
             }
         }
-        .navigationTitle("识别记录")
+        .navigationTitle(reviewDrafts.isEmpty ? "识别记录" : "待确认账单")
         .navigationBarTitleDisplayMode(.inline)
     }
 

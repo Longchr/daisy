@@ -10,6 +10,7 @@ struct TransactionDetailView: View {
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
     @Bindable var transaction: LedgerTransaction
     @State private var isEditing = false
+    @State private var isCopying = false
     @State private var isConfirmingDelete = false
 
     private var category: LedgerCategory? { categories.first { $0.id == transaction.categoryID } }
@@ -63,14 +64,29 @@ struct TransactionDetailView: View {
         .navigationTitle("账单详情")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("编辑") { isEditing = true }
-                    .fontWeight(.semibold)
-                    .accessibilityIdentifier("editTransactionButton")
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    isEditing = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .accessibilityLabel("编辑账单")
+                .accessibilityIdentifier("editTransactionButton")
+
+                Button {
+                    isCopying = true
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .accessibilityLabel("复制账单")
+                .accessibilityIdentifier("copyTransactionButton")
             }
         }
         .sheet(isPresented: $isEditing) {
             AddTransactionView(transaction: transaction)
+        }
+        .sheet(isPresented: $isCopying) {
+            AddTransactionView(copying: transaction)
         }
         .confirmationDialog("删除这笔账单？", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
             Button("删除账单", role: .destructive, action: deleteTransaction)

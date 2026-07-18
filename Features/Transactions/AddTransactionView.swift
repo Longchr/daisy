@@ -6,10 +6,18 @@ struct AddTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var appState: AppState
+    @Query(sort: \LedgerTransaction.occurredAt, order: .reverse) private var transactions: [LedgerTransaction]
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
 
     private let transaction: LedgerTransaction?
+    private let isCopying: Bool
+
+    @AppStorage("daisy.lastAccountID") private var lastAccountID = ""
+    @AppStorage("daisy.lastCategory.expense") private var lastExpenseCategoryID = ""
+    @AppStorage("daisy.lastCategory.income") private var lastIncomeCategoryID = ""
+    @AppStorage("daisy.lastCategory.transfer") private var lastTransferCategoryID = ""
+    @AppStorage("daisy.lastCategory.refund") private var lastRefundCategoryID = ""
 
     @State private var kind: TransactionKind
     @State private var amountText: String
@@ -19,10 +27,16 @@ struct AddTransactionView: View {
     @State private var selectedDestinationAccountID: UUID?
     @State private var occurredAt: Date
     @State private var note: String
-    @FocusState private var amountFocused: Bool
+    @FocusState private var focusedField: FocusedField?
+
+    private enum FocusedField: Hashable {
+        case amount
+        case merchant
+    }
 
     init(transaction: LedgerTransaction? = nil) {
         self.transaction = transaction
+        isCopying = false
         _kind = State(initialValue: transaction?.kind ?? .expense)
         _amountText = State(initialValue: transaction.map(Self.amountText(for:)) ?? "")
         _merchant = State(initialValue: transaction?.merchant ?? "")
@@ -33,7 +47,26 @@ struct AddTransactionView: View {
         _note = State(initialValue: transaction?.note ?? "")
     }
 
+    init(copying source: LedgerTransaction) {
+        transaction = nil
+        isCopying = true
+        _kind = State(initialValue: source.kind)
+        _amountText = State(initialValue: Self.amountText(for: source))
+        _merchant = State(initialValue: source.merchant)
+        _selectedCategoryID = State(initialValue: source.categoryID)
+        _selectedAccountID = State(initialValue: source.accountID)
+        _selectedDestinationAccountID = State(initialValue: source.destinationAccountID)
+        _occurredAt = State(initialValue: Date())
+        _note = State(initialValue: source.note)
+    }
+
     private var isEditing: Bool { transaction != nil }
+
+    private var navigationTitle: String {
+        if isEditing { return "编辑账单" }
+        if isCopying { return "复制账单" }
+        return "记一笔"
+    }
 
     private var availableCategories: [LedgerCategory] {
         categories.filter { category in
@@ -45,6 +78,23 @@ struct AddTransactionView: View {
     }
 
     private var parsedMoney: Money? { Money(decimalString: amountText) }
+
+    private var merchantSuggestions: [LedgerTransaction] {
+        guard focusedField == .merchant else { return [] }
+        let query = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        var seen = Set<String>()
+        return transactions.filter { candidate in
+            guard candidate.id != transaction?.id,
+                  candidate.kind == kind,
+                  !candidate.merchant.isEmpty else { return false }
+            let normalized = candidate.merchant.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: .current
+            )
+            guard seen.insert(normalized).inserted else { return false }
+            return query.isEmpty || candidate.merchant.localizedCaseInsensitiveContains(query)
+        }.prefix(4).map { $0 }
+    }
     private var canSave: Bool {
         let hasCoreFields = (parsedMoney?.minorUnits ?? 0) > 0 && !selectedCategoryID.isEmpty
         guard kind == .transfer else { return hasCoreFields }
@@ -73,7 +123,7 @@ struct AddTransactionView: View {
                         TextField("0.00", text: $amountText)
                             .font(.system(size: 38, weight: .semibold, design: .rounded).monospacedDigit())
                             .keyboardType(.decimalPad)
-                            .focused($amountFocused)
+                            .focused($focusedField, equals: .amount)
                             .accessibilityIdentifier("amountField")
                     }
                     .padding(.vertical, 12)
@@ -82,7 +132,28 @@ struct AddTransactionView: View {
                 Section("账单信息") {
                     TextField("商户或来源", text: $merchant)
                         .textInputAutocapitalization(.never)
+                        .focused($focusedField, equals: .merchant)
                         .accessibilityIdentifier("merchantField")
+
+                    if !merchantSuggestions.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(merchantSuggestions) { suggestion in
+                                    Button {
+                                        applySuggestion(suggestion)
+                                    } label: {
+                                        Label(suggestion.merchant, systemImage: "clock.arrow.circlepath")
+                                            .lineLimit(1)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .frame(minHeight: 44)
+                        .accessibilityLabel("最近使用的商户")
+                    }
 
                     Picker("分类", selection: $selectedCategoryID) {
                         ForEach(availableCategories) { category in
@@ -117,7 +188,7 @@ struct AddTransactionView: View {
                         .lineLimit(2...5)
                 }
             }
-            .navigationTitle(isEditing ? "编辑账单" : "记一笔")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -132,9 +203,11 @@ struct AddTransactionView: View {
             }
             .onAppear {
                 if selectedCategoryID.isEmpty { selectDefaultCategory() }
-                if selectedAccountID == nil && !isEditing { selectedAccountID = accounts.first?.id }
+                if selectedAccountID == nil && !isEditing {
+                    selectedAccountID = rememberedAccountID ?? accounts.first(where: { !$0.isArchived })?.id
+                }
                 selectDefaultDestinationAccount()
-                if !isEditing { amountFocused = true }
+                if !isEditing && !isCopying { focusedField = .amount }
             }
             .onChange(of: kind) { _, _ in
                 selectDefaultCategory()
@@ -149,7 +222,37 @@ struct AddTransactionView: View {
     }
 
     private func selectDefaultCategory() {
-        selectedCategoryID = availableCategories.first?.id ?? ""
+        let remembered = rememberedCategoryID
+        selectedCategoryID = availableCategories.contains(where: { $0.id == remembered })
+            ? remembered
+            : (availableCategories.first?.id ?? "")
+    }
+
+    private var rememberedAccountID: UUID? {
+        guard let id = UUID(uuidString: lastAccountID),
+              accounts.contains(where: { $0.id == id && !$0.isArchived }) else { return nil }
+        return id
+    }
+
+    private var rememberedCategoryID: String {
+        switch kind {
+        case .expense: lastExpenseCategoryID
+        case .income: lastIncomeCategoryID
+        case .transfer: lastTransferCategoryID
+        case .refund: lastRefundCategoryID
+        }
+    }
+
+    private func applySuggestion(_ suggestion: LedgerTransaction) {
+        merchant = suggestion.merchant
+        if availableCategories.contains(where: { $0.id == suggestion.categoryID }) {
+            selectedCategoryID = suggestion.categoryID
+        }
+        if let accountID = suggestion.accountID,
+           accounts.contains(where: { $0.id == accountID && !$0.isArchived }) {
+            selectedAccountID = accountID
+        }
+        focusedField = nil
     }
 
     private func selectDefaultDestinationAccount() {
@@ -196,11 +299,28 @@ struct AddTransactionView: View {
         }
         do {
             try modelContext.save()
+            rememberSelections()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             dismiss()
-            appState.presentToast(isEditing ? "账单已更新" : "已记下 \(money.formatted())")
+            if isEditing {
+                appState.presentToast("账单已更新")
+            } else if isCopying {
+                appState.presentToast("账单已复制")
+            } else {
+                appState.presentToast("已记下 \(money.formatted())")
+            }
         } catch {
             appState.presentToast("保存失败，请重试", style: .error)
+        }
+    }
+
+    private func rememberSelections() {
+        lastAccountID = selectedAccountID?.uuidString ?? ""
+        switch kind {
+        case .expense: lastExpenseCategoryID = selectedCategoryID
+        case .income: lastIncomeCategoryID = selectedCategoryID
+        case .transfer: lastTransferCategoryID = selectedCategoryID
+        case .refund: lastRefundCategoryID = selectedCategoryID
         }
     }
 

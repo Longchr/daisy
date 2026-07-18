@@ -97,6 +97,40 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
     }
 
+    func testMerchantSuggestionReusesRecentTransaction() {
+        createManualTransaction(amount: "22.40", merchant: "历史商户")
+
+        tapReliably(app.buttons["addTransactionButton"])
+        app.buttons["手动记账"].tap()
+        app.textFields["amountField"].typeText("9.90")
+        let merchant = app.textFields["merchantField"]
+        merchant.tap()
+
+        let suggestion = app.buttons["历史商户"]
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 3))
+        suggestion.tap()
+        XCTAssertEqual(merchant.value as? String, "历史商户")
+    }
+
+    func testTransactionCanBeCopiedAsNewEntry() {
+        createManualTransaction(amount: "35.60", merchant: "复制测试账单")
+        app.tabBars.buttons["账单"].tap()
+        app.staticTexts["复制测试账单"].tap()
+
+        let copyButton = app.buttons["copyTransactionButton"]
+        XCTAssertTrue(copyButton.waitForExistence(timeout: 3))
+        copyButton.tap()
+        XCTAssertTrue(app.navigationBars["复制账单"].waitForExistence(timeout: 3))
+        app.buttons["saveTransactionButton"].tap()
+        XCTAssertTrue(app.staticTexts["账单已复制"].waitForExistence(timeout: 3))
+
+        app.navigationBars["账单详情"].buttons.firstMatch.tap()
+        let copiedRows = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", "复制测试账单")
+        )
+        XCTAssertEqual(copiedRows.count, 2)
+    }
+
     func testAISettingsExposeDirectConnectionFields() {
         app.tabBars.buttons["设置"].tap()
         app.staticTexts["AI 识别服务"].tap()
@@ -165,5 +199,17 @@ final class DaisyUITests: XCTestCase {
         } else {
             element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
+    }
+
+    private func createManualTransaction(amount: String, merchant: String) {
+        let addTransaction = app.buttons["addTransactionButton"]
+        XCTAssertTrue(addTransaction.waitForExistence(timeout: 5))
+        tapReliably(addTransaction)
+        app.buttons["手动记账"].tap()
+        app.textFields["amountField"].typeText(amount)
+        app.textFields["merchantField"].tap()
+        app.textFields["merchantField"].typeText(merchant)
+        app.buttons["saveTransactionButton"].tap()
+        XCTAssertTrue(app.textFields["amountField"].waitForNonExistence(timeout: 5))
     }
 }

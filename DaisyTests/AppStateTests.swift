@@ -40,4 +40,13 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(appState.selectedTab, .settings)
         XCTAssertEqual(appState.settingsPath.count, 1)
     }
+
+    func testRecognitionDrillDownSelectsSettingsDestination() {
+        let appState = AppState()
+
+        appState.showRecognitionRecords()
+
+        XCTAssertEqual(appState.selectedTab, .settings)
+        XCTAssertEqual(appState.settingsPath.count, 1)
+    }
 }

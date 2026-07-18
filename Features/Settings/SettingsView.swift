@@ -38,13 +38,13 @@ struct SettingsView: View {
                         $0.statusRaw == RecognitionDraftStatus.needsReview.rawValue
                             || $0.statusRaw == RecognitionDraftStatus.failed.rawValue
                     }) {
-                        NavigationLink {
-                            PendingRecognitionsView()
-                        } label: {
+                        NavigationLink(value: AppState.SettingsDestination.recognitionRecords) {
                             SettingsRow(
                                 symbol: "tray.full.fill",
                                 tint: DaisyTheme.warning,
-                                title: "识别记录",
+                                title: drafts.contains(where: {
+                                    $0.statusRaw == RecognitionDraftStatus.needsReview.rawValue
+                                }) ? "待确认账单" : "识别记录",
                                 detail: recognitionRecordDetail
                             )
                         }
@@ -150,6 +150,8 @@ struct SettingsView: View {
                 switch destination {
                 case .budget(let month):
                     BudgetSettingsView(month: month)
+                case .recognitionRecords:
+                    PendingRecognitionsView()
                 }
             }
         }

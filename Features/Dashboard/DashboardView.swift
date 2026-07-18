@@ -8,6 +8,7 @@ struct DashboardView: View {
     @Query(sort: \LedgerTransaction.occurredAt, order: .reverse) private var transactions: [LedgerTransaction]
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
     @Query(sort: \MonthlyBudget.monthStart, order: .reverse) private var budgets: [MonthlyBudget]
+    @Query(sort: \RecognitionDraft.createdAt, order: .reverse) private var recognitionDrafts: [RecognitionDraft]
 
     private var monthlyTransactions: [LedgerTransaction] {
         transactions.filter { Calendar.current.isDate($0.occurredAt, equalTo: appState.selectedMonth, toGranularity: .month) }
@@ -31,6 +32,12 @@ struct DashboardView: View {
         budgets.first {
             $0.categoryID == nil && Calendar.current.isDate($0.monthStart, equalTo: appState.selectedMonth, toGranularity: .month)
         }
+    }
+
+    private var pendingRecognitionCount: Int {
+        recognitionDrafts.filter {
+            $0.statusRaw == RecognitionDraftStatus.needsReview.rawValue
+        }.count
     }
 
     var body: some View {
@@ -60,6 +67,12 @@ struct DashboardView: View {
 
                     BudgetProgressCard(budget: currentBudget, spentMinor: expenseMinor, hideAmounts: settings.hideAmounts) {
                         appState.showBudgetSettings(for: appState.selectedMonth)
+                    }
+
+                    if pendingRecognitionCount > 0 {
+                        PendingRecognitionCard(count: pendingRecognitionCount) {
+                            appState.showRecognitionRecords()
+                        }
                     }
 
                     SpendingTrendCard(transactions: monthlyTransactions) { date in
@@ -101,6 +114,42 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+}
+
+private struct PendingRecognitionCard: View {
+    let count: Int
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            DaisyCard {
+                HStack(spacing: 14) {
+                    Image(systemName: "checkmark.bubble.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(DaisyTheme.warning)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            DaisyTheme.warning.opacity(0.13),
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        )
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(count) 笔账单待确认")
+                            .font(.headline)
+                        Text("逐笔核对识别结果")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("pendingRecognitionCard")
+        .accessibilityHint("打开待确认账单")
     }
 }
 
