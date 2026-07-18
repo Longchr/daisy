@@ -8,14 +8,7 @@ enum DaisyTheme {
     static let warning = Color(hex: "C58A24")
     static let danger = Color(hex: "B54747")
 
-    static let pageGradient = LinearGradient(
-        colors: [
-            Color(uiColor: .systemGroupedBackground),
-            Color(uiColor: .secondarySystemGroupedBackground).opacity(0.35)
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
+    static let pageBackground = Color(uiColor: .systemGroupedBackground)
 
     static func amountColor(for kind: TransactionKind) -> Color {
         switch kind {
@@ -65,14 +58,14 @@ struct DaisyCard<Content: View>: View {
 
     var body: some View {
         content
-            .padding(18)
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(Color.primary.opacity(0.055), lineWidth: 0.75)
             }
-            .shadow(color: Color.black.opacity(0.04), radius: 14, y: 7)
+            .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
     }
 }
 
@@ -86,7 +79,7 @@ struct CategoryIcon: View {
             .font(.system(size: size * 0.38, weight: .semibold))
             .foregroundStyle(tint)
             .frame(width: size, height: size)
-            .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: size * 0.34, style: .continuous))
+            .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .accessibilityHidden(true)
     }
 }

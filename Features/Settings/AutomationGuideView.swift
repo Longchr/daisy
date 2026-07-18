@@ -111,7 +111,7 @@ struct AutomationGuideView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 28)
         }
-        .background(DaisyTheme.pageGradient.ignoresSafeArea())
+        .background(DaisyTheme.pageBackground.ignoresSafeArea())
         .navigationTitle("自动记账")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {

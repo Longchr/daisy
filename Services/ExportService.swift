@@ -15,6 +15,8 @@ struct TransactionExportRecord: Codable {
     let source: String
     let confidence: Double?
     let idempotencyKey: String?
+    let createdAt: Date?
+    let updatedAt: Date?
 
     init(_ transaction: LedgerTransaction) {
         id = transaction.id
@@ -31,6 +33,8 @@ struct TransactionExportRecord: Codable {
         source = transaction.sourceRaw
         confidence = transaction.confidence
         idempotencyKey = transaction.idempotencyKey
+        createdAt = transaction.createdAt
+        updatedAt = transaction.updatedAt
     }
 }
 
@@ -81,12 +85,40 @@ struct BudgetExportRecord: Codable {
     let monthStart: Date
     let categoryID: String?
     let amountMinor: Int64
+    let createdAt: Date?
+    let updatedAt: Date?
 
     init(_ budget: MonthlyBudget) {
         id = budget.id
         monthStart = budget.monthStart
         categoryID = budget.categoryID
         amountMinor = budget.amountMinor
+        createdAt = budget.createdAt
+        updatedAt = budget.updatedAt
+    }
+}
+
+struct RecurringReminderExportRecord: Codable {
+    let id: UUID
+    let merchant: String
+    let amountMinor: Int64
+    let categoryID: String
+    let accountID: UUID?
+    let dayOfMonth: Int
+    let isEnabled: Bool
+    let createdAt: Date?
+    let updatedAt: Date?
+
+    init(_ reminder: RecurringReminder) {
+        id = reminder.id
+        merchant = reminder.merchant
+        amountMinor = reminder.amountMinor
+        categoryID = reminder.categoryID
+        accountID = reminder.accountID
+        dayOfMonth = reminder.dayOfMonth
+        isEnabled = reminder.isEnabled
+        createdAt = reminder.createdAt
+        updatedAt = reminder.updatedAt
     }
 }
 
@@ -97,6 +129,43 @@ struct DaisyBackup: Codable {
     let accounts: [AccountExportRecord]
     let categories: [CategoryExportRecord]
     let budgets: [BudgetExportRecord]
+    let recurringReminders: [RecurringReminderExportRecord]
+
+    init(
+        schemaVersion: Int,
+        createdAt: Date,
+        transactions: [TransactionExportRecord],
+        accounts: [AccountExportRecord],
+        categories: [CategoryExportRecord],
+        budgets: [BudgetExportRecord],
+        recurringReminders: [RecurringReminderExportRecord] = []
+    ) {
+        self.schemaVersion = schemaVersion
+        self.createdAt = createdAt
+        self.transactions = transactions
+        self.accounts = accounts
+        self.categories = categories
+        self.budgets = budgets
+        self.recurringReminders = recurringReminders
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion, createdAt, transactions, accounts, categories, budgets, recurringReminders
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        transactions = try container.decode([TransactionExportRecord].self, forKey: .transactions)
+        accounts = try container.decode([AccountExportRecord].self, forKey: .accounts)
+        categories = try container.decode([CategoryExportRecord].self, forKey: .categories)
+        budgets = try container.decode([BudgetExportRecord].self, forKey: .budgets)
+        recurringReminders = try container.decodeIfPresent(
+            [RecurringReminderExportRecord].self,
+            forKey: .recurringReminders
+        ) ?? []
+    }
 }
 
 enum ExportService {
@@ -114,7 +183,7 @@ enum ExportService {
         }
     }
 
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
     static let maximumBackupRecords = 100_000
 
     static func makeCSVFile(transactions: [LedgerTransaction]) throws -> URL {
@@ -146,7 +215,8 @@ enum ExportService {
         transactions: [LedgerTransaction],
         accounts: [Account],
         categories: [LedgerCategory],
-        budgets: [MonthlyBudget]
+        budgets: [MonthlyBudget],
+        recurringReminders: [RecurringReminder] = []
     ) throws -> URL {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -157,7 +227,8 @@ enum ExportService {
             transactions: transactions.map(TransactionExportRecord.init),
             accounts: accounts.map(AccountExportRecord.init),
             categories: categories.map(CategoryExportRecord.init),
-            budgets: budgets.map(BudgetExportRecord.init)
+            budgets: budgets.map(BudgetExportRecord.init),
+            recurringReminders: recurringReminders.map(RecurringReminderExportRecord.init)
         )
         let data = try encoder.encode(backup)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Daisy-备份.json")
@@ -179,7 +250,8 @@ enum ExportService {
             transactions: legacyTransactions,
             accounts: [],
             categories: [],
-            budgets: []
+            budgets: [],
+            recurringReminders: []
         )
         try validate(backup)
         return backup
@@ -193,12 +265,22 @@ enum ExportService {
             + backup.accounts.count
             + backup.categories.count
             + backup.budgets.count
+            + backup.recurringReminders.count
         guard totalCount <= maximumBackupRecords else { throw BackupError.tooManyRecords }
 
         guard Set(backup.transactions.map(\.id)).count == backup.transactions.count,
               Set(backup.accounts.map(\.id)).count == backup.accounts.count,
               Set(backup.categories.map(\.id)).count == backup.categories.count,
-              Set(backup.budgets.map(\.id)).count == backup.budgets.count else {
+              Set(backup.budgets.map(\.id)).count == backup.budgets.count,
+              Set(backup.recurringReminders.map(\.id)).count == backup.recurringReminders.count else {
+            throw BackupError.invalidRecord
+        }
+
+        let budgetKeys = backup.budgets.map { record in
+            let components = Calendar.current.dateComponents([.year, .month], from: record.monthStart)
+            return "\(components.year ?? 0)-\(components.month ?? 0)-\(record.categoryID ?? "all")"
+        }
+        guard Set(budgetKeys).count == budgetKeys.count else {
             throw BackupError.invalidRecord
         }
 
@@ -223,7 +305,15 @@ enum ExportService {
                 && record.id.count <= 120
                 && !record.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && record.name.count <= 80
-        }), backup.budgets.allSatisfy({ $0.amountMinor > 0 }) else {
+        }), backup.budgets.allSatisfy({ $0.amountMinor > 0 }),
+            backup.recurringReminders.allSatisfy({ record in
+                !record.merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && record.merchant.count <= 200
+                    && record.amountMinor > 0
+                    && !record.categoryID.isEmpty
+                    && record.categoryID.count <= 120
+                    && (1...28).contains(record.dayOfMonth)
+            }) else {
             throw BackupError.invalidRecord
         }
     }

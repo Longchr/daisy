@@ -128,7 +128,7 @@ struct OnboardingView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(page.tint)
                                 .frame(width: 34, height: 34)
-                                .background(page.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                                .background(page.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                             Text(point.text)
                                 .font(.body.weight(.medium))
                             Spacer()
@@ -141,9 +141,9 @@ struct OnboardingView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .background(.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(.primary.opacity(0.06), lineWidth: 0.75)
                 }
 

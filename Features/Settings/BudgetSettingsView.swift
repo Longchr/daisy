@@ -34,8 +34,9 @@ struct BudgetSettingsView: View {
     var body: some View {
         Form {
             Section {
-                DatePicker("预算月份", selection: $selectedMonth, displayedComponents: .date)
-                    .datePickerStyle(.compact)
+                LabeledContent("预算月份") {
+                    MonthPicker(month: $selectedMonth, allowsFutureMonths: true)
+                }
                 HStack(alignment: .firstTextBaseline) {
                     Text("¥").foregroundStyle(.secondary)
                     TextField("0.00", text: $amountText)
@@ -45,7 +46,7 @@ struct BudgetSettingsView: View {
             } header: {
                 Text("总预算")
             } footer: {
-                Text("预算只影响提醒和分析，不会限制记账。退款会抵扣对应支出。")
+                Text("总预算按本月支出扣减，退款会抵扣总预算已用金额；预算不会限制记账。")
             }
 
             Section {
@@ -58,9 +59,7 @@ struct BudgetSettingsView: View {
             if let existing {
                 Section {
                     Button("删除本月预算", role: .destructive) {
-                        modelContext.delete(existing)
-                        try? modelContext.save()
-                        amountText = ""
+                        deleteTotalBudget(existing)
                     }
                 }
             }
@@ -102,7 +101,7 @@ struct BudgetSettingsView: View {
             } header: {
                 Text("分类预算")
             } footer: {
-                Text("分类预算用于观察消费边界，不会阻止记账。")
+                Text("分类预算按该分类原始支出统计；当前版本的退款尚不能自动回冲原分类。")
             }
         }
         .navigationTitle("月度预算")
@@ -137,7 +136,22 @@ struct BudgetSettingsView: View {
             try modelContext.save()
             appState.presentToast("预算已保存")
         } catch {
+            modelContext.rollback()
+            loadExisting()
             appState.presentToast("预算保存失败", style: .error)
+        }
+    }
+
+    private func deleteTotalBudget(_ budget: MonthlyBudget) {
+        modelContext.delete(budget)
+        do {
+            try modelContext.save()
+            amountText = ""
+            appState.presentToast("本月预算已删除", style: .warning)
+        } catch {
+            modelContext.rollback()
+            loadExisting()
+            appState.presentToast("预算删除失败", style: .error)
         }
     }
 

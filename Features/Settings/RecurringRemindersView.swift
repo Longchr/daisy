@@ -90,10 +90,10 @@ struct RecurringRemindersView: View {
     }
 
     private func delete(_ reminder: RecurringReminder) {
-        RecurringReminderScheduler.remove(reminderID: reminder.id)
         modelContext.delete(reminder)
         do {
             try modelContext.save()
+            RecurringReminderScheduler.remove(reminderID: reminder.id)
             appState.presentToast("周期提醒已删除", style: .warning)
         } catch {
             modelContext.rollback()
@@ -164,7 +164,7 @@ private struct RecurringReminderEditorView: View {
                     }
                     Picker("账户", selection: $accountID) {
                         Text("未指定").tag(Optional<UUID>.none)
-                        ForEach(accounts.filter { !$0.isArchived }) { account in
+                        ForEach(accounts.filter { !$0.isArchived || $0.id == accountID }) { account in
                             Label(account.name, systemImage: account.symbol)
                                 .tag(Optional(account.id))
                         }
@@ -209,6 +209,7 @@ private struct RecurringReminderEditorView: View {
         guard canSave,
               let amountMinor = Money(decimalString: amountText)?.minorUnits else { return }
         isSaving = true
+        defer { isSaving = false }
 
         let target = reminder ?? RecurringReminder(
             merchant: merchant,
@@ -239,8 +240,10 @@ private struct RecurringReminderEditorView: View {
         } catch {
             RecurringReminderScheduler.remove(reminderID: target.id)
             modelContext.rollback()
+            if let reminder, reminder.isEnabled {
+                _ = try? await RecurringReminderScheduler.schedule(reminder)
+            }
             appState.presentToast("提醒保存失败，请重试", style: .error)
         }
-        isSaving = false
     }
 }

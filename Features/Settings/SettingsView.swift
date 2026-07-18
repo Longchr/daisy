@@ -7,9 +7,10 @@ struct SettingsView: View {
     @EnvironmentObject private var appLock: AppLockController
     @Query private var drafts: [RecognitionDraft]
     @State private var aiConfiguration = AIConfigurationStore.load()
+    @State private var isAuthenticatingBiometrics = false
 
     var body: some View {
-        NavigationStack(path: $appState.settingsPath) {
+        NavigationStack {
             List {
                 Section {
                     NavigationLink {
@@ -38,7 +39,9 @@ struct SettingsView: View {
                         $0.statusRaw == RecognitionDraftStatus.needsReview.rawValue
                             || $0.statusRaw == RecognitionDraftStatus.failed.rawValue
                     }) {
-                        NavigationLink(value: AppState.SettingsDestination.recognitionRecords) {
+                        NavigationLink {
+                            PendingRecognitionsView()
+                        } label: {
                             SettingsRow(
                                 symbol: "tray.full.fill",
                                 tint: DaisyTheme.warning,
@@ -57,14 +60,16 @@ struct SettingsView: View {
                     Toggle(isOn: $settings.hideAmounts) {
                         Label("隐藏金额", systemImage: "eye.slash.fill")
                     }
-                    Toggle(isOn: $settings.requireBiometrics) {
-                        Label("Face ID 锁", systemImage: "faceid")
-                    }
-                    .onChange(of: settings.requireBiometrics) { _, enabled in
-                        if enabled {
-                            Task { await appLock.unlock() }
+                    Toggle(isOn: biometricLockBinding) {
+                        HStack {
+                            Label("Face ID 锁", systemImage: "faceid")
+                            if isAuthenticatingBiometrics {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
                         }
                     }
+                    .disabled(isAuthenticatingBiometrics)
 
                     Picker("外观", selection: $settings.colorScheme) {
                         ForEach(AppColorScheme.allCases) { scheme in
@@ -74,7 +79,9 @@ struct SettingsView: View {
                 }
 
                 Section("账本配置") {
-                    NavigationLink(value: AppState.SettingsDestination.budget(appState.selectedMonth)) {
+                    NavigationLink {
+                        BudgetSettingsView()
+                    } label: {
                         Label("月度预算", systemImage: "gauge.with.dots.needle.67percent")
                     }
                     NavigationLink {
@@ -87,7 +94,9 @@ struct SettingsView: View {
                     } label: {
                         Label("分类", systemImage: "square.grid.2x2.fill")
                     }
-                    NavigationLink(value: AppState.SettingsDestination.recurringReminders) {
+                    NavigationLink {
+                        RecurringRemindersView()
+                    } label: {
                         Label("周期提醒", systemImage: "calendar.badge.clock")
                     }
                 }
@@ -127,7 +136,7 @@ struct SettingsView: View {
                             .font(.title2.weight(.medium))
                             .foregroundStyle(DaisyTheme.accent)
                             .frame(width: 44, height: 44)
-                            .background(DaisyTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .background(DaisyTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Daisy")
                                 .font(.headline)
@@ -149,16 +158,6 @@ struct SettingsView: View {
                 aiConfiguration = AIConfigurationStore.load()
             }
             .navigationTitle("设置")
-            .navigationDestination(for: AppState.SettingsDestination.self) { destination in
-                switch destination {
-                case .budget(let month):
-                    BudgetSettingsView(month: month)
-                case .recognitionRecords:
-                    PendingRecognitionsView()
-                case .recurringReminders:
-                    RecurringRemindersView()
-                }
-            }
         }
     }
 
@@ -171,6 +170,29 @@ struct SettingsView: View {
         }.count
         if reviewCount > 0 { return "\(reviewCount) 笔待确认" }
         return "\(failedCount) 条失败"
+    }
+
+    private var biometricLockBinding: Binding<Bool> {
+        Binding(
+            get: { settings.requireBiometrics },
+            set: { enabled in
+                guard enabled else {
+                    settings.requireBiometrics = false
+                    return
+                }
+                Task {
+                    isAuthenticatingBiometrics = true
+                    defer { isAuthenticatingBiometrics = false }
+                    if await appLock.unlock() {
+                        settings.requireBiometrics = true
+                        appState.presentToast("Face ID 锁已开启")
+                    } else {
+                        settings.requireBiometrics = false
+                        appState.presentToast("身份验证未完成，Face ID 锁未开启", style: .warning)
+                    }
+                }
+            }
+        )
     }
 }
 

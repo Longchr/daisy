@@ -21,33 +21,22 @@ final class AppStateTests: XCTestCase {
         XCTAssertNil(appState.toast)
     }
 
-    func testTransactionDrillDownSelectsTabAndDateFilter() {
-        let appState = AppState()
+    func testDayFilterMatchesOnlySelectedDay() {
         let selectedDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let filter = AppState.TransactionDateFilter.day(selectedDate)
 
-        appState.showTransactions(.day(selectedDate), categoryID: "expense.food")
-
-        XCTAssertEqual(appState.selectedTab, .transactions)
-        XCTAssertTrue(appState.transactionDateFilter?.contains(selectedDate) == true)
-        XCTAssertFalse(appState.transactionDateFilter?.contains(selectedDate.addingTimeInterval(86_400)) == true)
-        XCTAssertEqual(appState.transactionCategoryID, "expense.food")
+        XCTAssertTrue(filter.contains(selectedDate))
+        XCTAssertFalse(filter.contains(selectedDate.addingTimeInterval(86_400)))
     }
 
-    func testBudgetDrillDownSelectsSettingsDestination() {
-        let appState = AppState()
+    func testMonthFilterMatchesOnlySelectedMonth() {
+        let calendar = Calendar(identifier: .gregorian)
+        let july = calendar.date(from: DateComponents(year: 2026, month: 7, day: 15))!
+        let sameMonth = calendar.date(from: DateComponents(year: 2026, month: 7, day: 30))!
+        let august = calendar.date(from: DateComponents(year: 2026, month: 8, day: 1))!
+        let filter = AppState.TransactionDateFilter.month(july)
 
-        appState.showBudgetSettings(for: Date())
-
-        XCTAssertEqual(appState.selectedTab, .settings)
-        XCTAssertEqual(appState.settingsPath.count, 1)
-    }
-
-    func testRecognitionDrillDownSelectsSettingsDestination() {
-        let appState = AppState()
-
-        appState.showRecognitionRecords()
-
-        XCTAssertEqual(appState.selectedTab, .settings)
-        XCTAssertEqual(appState.settingsPath.count, 1)
+        XCTAssertTrue(filter.contains(sameMonth, calendar: calendar))
+        XCTAssertFalse(filter.contains(august, calendar: calendar))
     }
 }

@@ -15,14 +15,15 @@ final class AppLockController: ObservableObject {
         isUnlocked = false
     }
 
-    func unlock() async {
+    @discardableResult
+    func unlock() async -> Bool {
         let context = LAContext()
         context.localizedCancelTitle = "取消"
         var error: NSError?
 
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             errorMessage = "设备未设置可用的身份验证"
-            return
+            return false
         }
 
         do {
@@ -32,8 +33,10 @@ final class AppLockController: ObservableObject {
             )
             isUnlocked = success
             errorMessage = nil
+            return success
         } catch {
             errorMessage = "未能完成身份验证"
+            return false
         }
     }
 

@@ -184,7 +184,7 @@ struct AddTransactionView: View {
 
                     Picker("账户", selection: $selectedAccountID) {
                         Text("未指定").tag(Optional<UUID>.none)
-                        ForEach(accounts.filter { !$0.isArchived }) { account in
+                        ForEach(accounts.filter { !$0.isArchived || $0.id == selectedAccountID }) { account in
                             Label(account.name, systemImage: account.symbol)
                                 .tag(Optional(account.id))
                         }
@@ -193,7 +193,10 @@ struct AddTransactionView: View {
                     if kind == .transfer {
                         Picker("转入账户", selection: $selectedDestinationAccountID) {
                             Text("请选择").tag(Optional<UUID>.none)
-                            ForEach(accounts.filter { !$0.isArchived && $0.id != selectedAccountID }) { account in
+                            ForEach(accounts.filter {
+                                (!$0.isArchived || $0.id == selectedDestinationAccountID)
+                                    && $0.id != selectedAccountID
+                            }) { account in
                                 Label(account.name, systemImage: account.symbol)
                                     .tag(Optional(account.id))
                             }
@@ -332,6 +335,7 @@ struct AddTransactionView: View {
                 appState.presentToast("已记下 \(money.formatted())")
             }
         } catch {
+            modelContext.rollback()
             appState.presentToast("保存失败，请重试", style: .error)
         }
     }

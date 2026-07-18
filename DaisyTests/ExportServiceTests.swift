@@ -27,6 +27,8 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(backup.transactions[0].idempotencyKey, "receipt-fingerprint")
         XCTAssertEqual(backup.transactions[0].accountID, sourceAccountID)
         XCTAssertEqual(backup.transactions[0].destinationAccountID, destinationAccountID)
+        XCTAssertNotNil(backup.transactions[0].createdAt)
+        XCTAssertNotNil(backup.transactions[0].updatedAt)
     }
 
     func testCSVEscapesQuotesAndCommas() throws {
@@ -39,6 +41,46 @@ final class ExportServiceTests: XCTestCase {
         let url = try ExportService.makeCSVFile(transactions: [transaction])
         let text = try String(contentsOf: url, encoding: .utf8)
         XCTAssertTrue(text.contains("\"A, \"\"B\"\"\""))
+    }
+
+    func testJSONRoundTripPreservesRecurringReminders() throws {
+        let reminder = RecurringReminder(
+            merchant: "视频订阅",
+            amountMinor: 2_500,
+            categoryID: "expense.entertainment",
+            dayOfMonth: 18,
+            isEnabled: true
+        )
+
+        let url = try ExportService.makeJSONFile(
+            transactions: [],
+            accounts: [],
+            categories: [],
+            budgets: [],
+            recurringReminders: [reminder]
+        )
+        let backup = try ExportService.decodeBackup(Data(contentsOf: url))
+
+        XCTAssertEqual(backup.schemaVersion, 2)
+        XCTAssertEqual(backup.recurringReminders.count, 1)
+        XCTAssertEqual(backup.recurringReminders[0].merchant, "视频订阅")
+        XCTAssertEqual(backup.recurringReminders[0].dayOfMonth, 18)
+    }
+
+    func testVersionOneBackupWithoutRemindersStillDecodes() throws {
+        let backup = DaisyBackup(
+            schemaVersion: 1,
+            createdAt: Date(),
+            transactions: [],
+            accounts: [],
+            categories: [],
+            budgets: []
+        )
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: try encode(backup)) as? [String: Any])
+        object.removeValue(forKey: "recurringReminders")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        XCTAssertTrue(try ExportService.decodeBackup(legacyData).recurringReminders.isEmpty)
     }
 
     func testRejectsBackupFromFutureSchemaVersion() throws {
@@ -100,6 +142,24 @@ final class ExportServiceTests: XCTestCase {
             accounts: [],
             categories: [],
             budgets: []
+        )
+
+        XCTAssertThrowsError(try ExportService.decodeBackup(try encode(backup))) { error in
+            XCTAssertEqual(error as? ExportService.BackupError, .invalidRecord)
+        }
+    }
+
+    func testRejectsDuplicateLogicalBudgetsInBackup() throws {
+        let month = Date(timeIntervalSince1970: 1_767_225_600)
+        let first = MonthlyBudget(monthStart: month, categoryID: "expense.food", amountMinor: 10_000)
+        let second = MonthlyBudget(monthStart: month, categoryID: "expense.food", amountMinor: 20_000)
+        let backup = DaisyBackup(
+            schemaVersion: ExportService.currentSchemaVersion,
+            createdAt: Date(),
+            transactions: [],
+            accounts: [],
+            categories: [],
+            budgets: [BudgetExportRecord(first), BudgetExportRecord(second)]
         )
 
         XCTAssertThrowsError(try ExportService.decodeBackup(try encode(backup))) { error in

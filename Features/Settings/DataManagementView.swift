@@ -9,6 +9,7 @@ struct DataManagementView: View {
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
     @Query(sort: \MonthlyBudget.monthStart, order: .reverse) private var budgets: [MonthlyBudget]
+    @Query(sort: \RecurringReminder.dayOfMonth) private var recurringReminders: [RecurringReminder]
 
     @State private var csvURL: URL?
     @State private var jsonURL: URL?
@@ -29,7 +30,7 @@ struct DataManagementView: View {
 
                 if let jsonURL {
                     ShareLink(item: jsonURL) {
-                        Label("导出加密前 JSON 备份", systemImage: "doc.badge.gearshape")
+                        Label("导出 JSON 备份（未加密）", systemImage: "doc.badge.gearshape")
                     }
                 } else {
                     Label("正在准备 JSON", systemImage: "hourglass")
@@ -60,6 +61,7 @@ struct DataManagementView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { prepareExports() }
         .onChange(of: transactions.count) { _, _ in prepareExports() }
+        .onChange(of: recurringReminders.count) { _, _ in prepareExports() }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.json]) { result in
             importBackup(result)
         }
@@ -77,7 +79,8 @@ struct DataManagementView: View {
             transactions: transactions,
             accounts: accounts,
             categories: categories,
-            budgets: budgets
+            budgets: budgets,
+            recurringReminders: recurringReminders
         )
     }
 
@@ -94,7 +97,8 @@ struct DataManagementView: View {
                 Data(contentsOf: url, options: [.mappedIfSafe])
             )
             var existingIDs = Set(transactions.map(\.id))
-            var inserted = 0
+            var insertedTransactions = 0
+            var insertedRecords = 0
             for record in backup.transactions where existingIDs.insert(record.id).inserted {
                 guard let kind = TransactionKind(rawValue: record.kind) else { continue }
                 modelContext.insert(LedgerTransaction(
@@ -111,9 +115,12 @@ struct DataManagementView: View {
                     note: record.note,
                     source: TransactionSource(rawValue: record.source) ?? .manual,
                     confidence: record.confidence,
-                    idempotencyKey: record.idempotencyKey
+                    idempotencyKey: record.idempotencyKey,
+                    createdAt: record.createdAt ?? Date(),
+                    updatedAt: record.updatedAt ?? record.createdAt ?? Date()
                 ))
-                inserted += 1
+                insertedTransactions += 1
+                insertedRecords += 1
             }
 
             var existingAccountIDs = Set(accounts.map(\.id))
@@ -128,6 +135,7 @@ struct DataManagementView: View {
                     sortOrder: record.sortOrder,
                     isArchived: record.isArchived
                 ))
+                insertedRecords += 1
             }
 
             var existingCategoryIDs = Set(categories.map(\.id))
@@ -142,19 +150,52 @@ struct DataManagementView: View {
                     sortOrder: record.sortOrder,
                     isSystem: record.isSystem
                 ))
+                insertedRecords += 1
             }
 
             var existingBudgetIDs = Set(budgets.map(\.id))
-            for record in backup.budgets where existingBudgetIDs.insert(record.id).inserted {
+            var existingBudgetKeys = Set(budgets.map {
+                budgetKey(month: $0.monthStart, categoryID: $0.categoryID)
+            })
+            for record in backup.budgets where existingBudgetIDs.insert(record.id).inserted
+                && existingBudgetKeys.insert(
+                    budgetKey(month: record.monthStart, categoryID: record.categoryID)
+                ).inserted {
                 modelContext.insert(MonthlyBudget(
                     id: record.id,
                     monthStart: record.monthStart,
                     categoryID: record.categoryID,
-                    amountMinor: record.amountMinor
+                    amountMinor: record.amountMinor,
+                    createdAt: record.createdAt ?? Date(),
+                    updatedAt: record.updatedAt ?? record.createdAt ?? Date()
                 ))
+                insertedRecords += 1
+            }
+
+            var restoredReminders: [RecurringReminder] = []
+            var existingReminderIDs = Set(recurringReminders.map(\.id))
+            for record in backup.recurringReminders where existingReminderIDs.insert(record.id).inserted {
+                let reminder = RecurringReminder(
+                    id: record.id,
+                    merchant: record.merchant,
+                    amountMinor: record.amountMinor,
+                    categoryID: record.categoryID,
+                    accountID: record.accountID,
+                    dayOfMonth: record.dayOfMonth,
+                    isEnabled: record.isEnabled,
+                    createdAt: record.createdAt ?? Date(),
+                    updatedAt: record.updatedAt ?? record.createdAt ?? Date()
+                )
+                modelContext.insert(reminder)
+                restoredReminders.append(reminder)
+                insertedRecords += 1
             }
             try modelContext.save()
-            appState.presentToast("已恢复 \(inserted) 笔账单")
+            let message = insertedRecords == insertedTransactions
+                ? "已恢复 \(insertedTransactions) 笔账单"
+                : "已恢复 \(insertedTransactions) 笔账单及 \(insertedRecords - insertedTransactions) 项设置"
+            appState.presentToast(message)
+            reschedule(restoredReminders)
         } catch {
             modelContext.rollback()
             let message = (error as? LocalizedError)?.errorDescription ?? "文件格式不正确"
@@ -170,7 +211,32 @@ struct DataManagementView: View {
             try modelContext.save()
             appState.presentToast("全部账单已删除", style: .warning)
         } catch {
+            modelContext.rollback()
             appState.presentToast("删除失败", style: .error)
         }
+    }
+
+    private func reschedule(_ reminders: [RecurringReminder]) {
+        guard !reminders.isEmpty else { return }
+        Task { @MainActor in
+            var hasFailure = false
+            for reminder in reminders where reminder.isEnabled {
+                do {
+                    if try await RecurringReminderScheduler.schedule(reminder) == false {
+                        hasFailure = true
+                    }
+                } catch {
+                    hasFailure = true
+                }
+            }
+            if hasFailure {
+                appState.presentToast("数据已恢复，部分提醒需要重新开启", style: .warning)
+            }
+        }
+    }
+
+    private func budgetKey(month: Date, categoryID: String?) -> String {
+        let components = Calendar.current.dateComponents([.year, .month], from: month)
+        return "\(components.year ?? 0)-\(components.month ?? 0)-\(categoryID ?? "all")"
     }
 }

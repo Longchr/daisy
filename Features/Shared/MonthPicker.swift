@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MonthPicker: View {
     @Binding var month: Date
+    var allowsFutureMonths = false
 
     private var title: String {
         month.formatted(.dateTime.year().month(.wide))
@@ -28,7 +29,10 @@ struct MonthPicker: View {
                 Image(systemName: "chevron.right")
                     .frame(width: 32, height: 32)
             }
-            .disabled(Calendar.current.isDate(month, equalTo: Date(), toGranularity: .month))
+            .disabled(
+                !allowsFutureMonths
+                    && Calendar.current.isDate(month, equalTo: Date(), toGranularity: .month)
+            )
             .accessibilityLabel("下个月")
         }
         .buttonStyle(.plain)

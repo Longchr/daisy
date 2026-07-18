@@ -85,6 +85,9 @@ struct RootView: View {
             }
         }
         .onAppear(perform: openPendingRecurringReminder)
+        .onChange(of: recurringReminders.count) { _, _ in
+            openPendingRecurringReminder()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openRecurringReminder)) { notification in
             guard let reminderID = notification.object as? String else { return }
             openRecurringReminder(idString: reminderID)
@@ -100,14 +103,17 @@ struct RootView: View {
     }
 
     private func openRecurringReminder(idString: String) {
-        defer {
+        guard let reminderID = UUID(uuidString: idString) else {
             UserDefaults.standard.removeObject(
                 forKey: RecurringReminderNotification.pendingReminderDefaultsKey
             )
+            return
         }
-        guard let reminderID = UUID(uuidString: idString),
-              let reminder = recurringReminders.first(where: { $0.id == reminderID }) else { return }
+        guard let reminder = recurringReminders.first(where: { $0.id == reminderID }) else { return }
         recurringReminderToConfirm = reminder
+        UserDefaults.standard.removeObject(
+            forKey: RecurringReminderNotification.pendingReminderDefaultsKey
+        )
     }
 }
 

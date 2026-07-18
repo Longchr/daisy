@@ -159,8 +159,31 @@ final class AppDatabaseTests: XCTestCase {
         XCTAssertEqual(saved.amountMinor, 1_680)
         XCTAssertEqual(transactions.count, 1)
         XCTAssertEqual(transactions[0].kind, .expense)
-        XCTAssertFalse(transactions[0].categoryID.isEmpty)
+        XCTAssertEqual(transactions[0].categoryID, "expense.other")
         XCTAssertNotNil(transactions[0].accountID)
+    }
+
+    func testManualExpenseIntentReusesMatchingMerchantDefaults() throws {
+        let database = AppDatabase(inMemory: true)
+        database.seedIfNeeded()
+        let context = database.container.mainContext
+        let account = try XCTUnwrap(context.fetch(FetchDescriptor<Account>()).last)
+        context.insert(LedgerTransaction(
+            kind: .expense,
+            amountMinor: 2_000,
+            merchant: "历史咖啡店",
+            categoryID: "expense.food",
+            accountID: account.id
+        ))
+        try context.save()
+
+        _ = try database.saveManualExpense(amountMinor: 1_680, merchant: " 历史咖啡店 ")
+        let transactions = try context.fetch(FetchDescriptor<LedgerTransaction>(
+            sortBy: [SortDescriptor(\.occurredAt, order: .reverse)]
+        ))
+
+        XCTAssertEqual(transactions.first?.categoryID, "expense.food")
+        XCTAssertEqual(transactions.first?.accountID, account.id)
     }
 
     private func makeRecognition(

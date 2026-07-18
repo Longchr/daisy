@@ -3,6 +3,7 @@ import SwiftData
 
 struct PendingRecognitionsView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
     @Query(sort: \RecognitionDraft.createdAt, order: .reverse) private var drafts: [RecognitionDraft]
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
@@ -92,7 +93,13 @@ struct PendingRecognitionsView: View {
 
     private func delete(_ records: [RecognitionDraft], at offsets: IndexSet) {
         for index in offsets { modelContext.delete(records[index]) }
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+            appState.presentToast("识别记录已删除", style: .warning)
+        } catch {
+            modelContext.rollback()
+            appState.presentToast("删除失败，请重试", style: .error)
+        }
     }
 
     private func failureMessage(for code: String?) -> String {
@@ -119,6 +126,7 @@ struct PendingRecognitionsView: View {
 private struct PendingReviewContainer: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appState: AppState
     let draft: RecognitionDraft
     let recognition: ValidatedRecognition
 
@@ -129,7 +137,12 @@ private struct PendingReviewContainer: View {
             idempotencyKey: draft.idempotencyKey
         ) {
             modelContext.delete(draft)
-            try? modelContext.save()
+            do {
+                try modelContext.save()
+            } catch {
+                modelContext.rollback()
+                appState.presentToast("账单已保存，但待确认记录清理失败", style: .warning)
+            }
             dismiss()
         }
         .navigationTitle("确认识别")

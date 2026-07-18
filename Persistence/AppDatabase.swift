@@ -52,19 +52,33 @@ final class AppDatabase {
         let categories = try context.fetch(FetchDescriptor<LedgerCategory>(
             sortBy: [SortDescriptor(\.sortOrder)]
         ))
-        guard let category = categories.first(where: { $0.kind == .expense }) else {
+        let transactions = try context.fetch(FetchDescriptor<LedgerTransaction>(
+            sortBy: [SortDescriptor(\.occurredAt, order: .reverse)]
+        ))
+        let normalizedMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let merchantKey = MerchantNormalizer.normalize(normalizedMerchant)
+        let history = transactions.first {
+            $0.kind == .expense
+                && !merchantKey.isEmpty
+                && MerchantNormalizer.normalize($0.merchant) == merchantKey
+        }
+        guard let category = categories.first(where: { $0.id == history?.categoryID && $0.kind == .expense })
+            ?? categories.first(where: { $0.id == "expense.other" })
+            ?? categories.first(where: { $0.kind == .expense }) else {
             throw ManualTransactionError.missingExpenseCategory
         }
         let accounts = try context.fetch(FetchDescriptor<Account>(
             sortBy: [SortDescriptor(\.sortOrder)]
         ))
-        let normalizedMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let accountID = history?.accountID.flatMap { historicalID in
+            accounts.first(where: { $0.id == historicalID && !$0.isArchived })?.id
+        } ?? accounts.first(where: { !$0.isArchived })?.id
         let transaction = LedgerTransaction(
             kind: .expense,
             amountMinor: amountMinor,
             merchant: normalizedMerchant.isEmpty ? category.name : normalizedMerchant,
             categoryID: category.id,
-            accountID: accounts.first(where: { !$0.isArchived })?.id
+            accountID: accountID
         )
         context.insert(transaction)
         try context.save()

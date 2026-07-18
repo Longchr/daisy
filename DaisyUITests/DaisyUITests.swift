@@ -94,6 +94,22 @@ final class DaisyUITests: XCTestCase {
         budgetCard.tap()
 
         XCTAssertTrue(app.navigationBars["月度预算"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["总览"].isSelected)
+
+        app.navigationBars["月度预算"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Daisy"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["总览"].isSelected)
+    }
+
+    func testSettingsBudgetReturnsToSettings() {
+        app.tabBars.buttons["设置"].tap()
+        app.staticTexts["月度预算"].tap()
+
+        XCTAssertTrue(app.navigationBars["月度预算"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
+
+        app.navigationBars["月度预算"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
     }
 
@@ -143,10 +159,13 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(category.isHittable)
         tapReliably(category)
 
-        XCTAssertTrue(app.navigationBars["账单"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.tabBars.buttons["账单"].isSelected)
+        XCTAssertTrue(app.navigationBars["餐饮"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["分析"].isSelected)
         XCTAssertTrue(app.staticTexts["分析测试账单"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.staticTexts["分类外收入"].exists)
+
+        app.navigationBars["餐饮"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["分析"].waitForExistence(timeout: 3))
     }
 
     func testDisabledRecurringReminderCanBeSavedWithoutPermissionPrompt() {

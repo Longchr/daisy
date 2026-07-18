@@ -6,6 +6,8 @@ struct CategoriesView: View {
     @EnvironmentObject private var appState: AppState
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
     @Query private var transactions: [LedgerTransaction]
+    @Query private var budgets: [MonthlyBudget]
+    @Query private var recurringReminders: [RecurringReminder]
     @State private var isAdding = false
     @State private var editingCategory: LedgerCategory?
 
@@ -63,8 +65,11 @@ struct CategoriesView: View {
     }
 
     private func delete(_ category: LedgerCategory) {
-        guard !transactions.contains(where: { $0.categoryID == category.id }) else {
-            appState.presentToast("该分类正在被账单使用，不能删除", style: .warning)
+        let isInUse = transactions.contains(where: { $0.categoryID == category.id })
+            || budgets.contains(where: { $0.categoryID == category.id })
+            || recurringReminders.contains(where: { $0.categoryID == category.id })
+        guard !isInUse else {
+            appState.presentToast("该分类仍被账单、预算或提醒使用，不能删除", style: .warning)
             return
         }
         modelContext.delete(category)
@@ -120,7 +125,7 @@ private struct CategoryEditorView: View {
                             } label: {
                                 Image(systemName: candidate)
                                     .frame(width: 44, height: 44)
-                                    .background(symbol == candidate ? DaisyTheme.accent.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+                                    .background(symbol == candidate ? DaisyTheme.accent.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
                             }
                             .buttonStyle(.plain)
                         }

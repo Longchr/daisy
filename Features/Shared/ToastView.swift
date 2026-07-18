@@ -38,9 +38,12 @@ struct ToastView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 13)
-            .background(.ultraThickMaterial, in: Capsule())
-            .overlay { Capsule().stroke(.primary.opacity(0.06), lineWidth: 0.75) }
-            .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+            .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(.primary.opacity(0.06), lineWidth: 0.75)
+            }
+            .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
             .padding(.horizontal, 20)
             .padding(.top, 8)
             Spacer()

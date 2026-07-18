@@ -64,7 +64,7 @@ struct RecognitionImportView: View {
         VStack(spacing: 24) {
             Spacer()
             ZStack {
-                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(DaisyTheme.accent.opacity(0.11))
                     .frame(width: 122, height: 122)
                 Image(systemName: "viewfinder.circle.fill")
@@ -109,8 +109,8 @@ struct RecognitionImportView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxHeight: 310)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.primary.opacity(0.08)) }
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(.primary.opacity(0.08)) }
                     .shadow(color: .black.opacity(0.08), radius: 18, y: 8)
             }
             ProgressView()
@@ -207,6 +207,8 @@ struct RecognitionReviewView: View {
 
     private var canSave: Bool {
         guard (Money(decimalString: amountText)?.minorUnits ?? 0) > 0 else { return false }
+        guard !merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        guard !categoryID.isEmpty else { return false }
         guard kind == .transfer else { return true }
         return selectedAccountID != nil
             && selectedDestinationAccountID != nil
@@ -341,6 +343,7 @@ struct RecognitionReviewView: View {
             appState.presentToast("账单已确认")
             onSaved()
         } catch {
+            modelContext.rollback()
             appState.presentToast("保存失败，请重试", style: .error)
         }
     }

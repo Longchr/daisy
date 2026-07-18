@@ -3,26 +3,31 @@ import SwiftData
 import Charts
 
 struct DashboardView: View {
+    private enum Destination: Hashable {
+        case budget(Date)
+        case recognitionRecords
+        case transactions(TransactionDrillDown)
+    }
+
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
     @Query(sort: \LedgerTransaction.occurredAt, order: .reverse) private var transactions: [LedgerTransaction]
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
     @Query(sort: \MonthlyBudget.monthStart, order: .reverse) private var budgets: [MonthlyBudget]
     @Query(sort: \RecognitionDraft.createdAt, order: .reverse) private var recognitionDrafts: [RecognitionDraft]
+    @State private var path: [Destination] = []
 
     private var monthlyTransactions: [LedgerTransaction] {
         transactions.filter { Calendar.current.isDate($0.occurredAt, equalTo: appState.selectedMonth, toGranularity: .month) }
     }
 
-    private var expenseMinor: Int64 {
-        monthlyTransactions.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amountMinor }
+    private var financialSummary: FinancialSummary {
+        FinancialSummary(transactions: monthlyTransactions)
     }
 
-    private var incomeMinor: Int64 {
-        monthlyTransactions.filter { $0.kind == .income || $0.kind == .refund }.reduce(0) { $0 + $1.amountMinor }
-    }
-
-    private var balanceMinor: Int64 { incomeMinor - expenseMinor }
+    private var expenseMinor: Int64 { financialSummary.netExpenseMinor }
+    private var incomeMinor: Int64 { financialSummary.incomeMinor }
+    private var balanceMinor: Int64 { financialSummary.balanceMinor }
 
     private var categoryMap: [String: LedgerCategory] {
         Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
@@ -41,7 +46,7 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(spacing: 18) {
                     HStack {
@@ -66,17 +71,17 @@ struct DashboardView: View {
                     )
 
                     BudgetProgressCard(budget: currentBudget, spentMinor: expenseMinor, hideAmounts: settings.hideAmounts) {
-                        appState.showBudgetSettings(for: appState.selectedMonth)
+                        path.append(.budget(appState.selectedMonth))
                     }
 
                     if pendingRecognitionCount > 0 {
                         PendingRecognitionCard(count: pendingRecognitionCount) {
-                            appState.showRecognitionRecords()
+                            path.append(.recognitionRecords)
                         }
                     }
 
                     SpendingTrendCard(transactions: monthlyTransactions) { date in
-                        appState.showTransactions(.day(date))
+                        path.append(.transactions(TransactionDrillDown(dateFilter: .day(date))))
                     }
 
                     RecentTransactionsCard(
@@ -84,14 +89,24 @@ struct DashboardView: View {
                         categoryMap: categoryMap,
                         hideAmounts: settings.hideAmounts
                     ) {
-                        appState.showTransactions(.month(appState.selectedMonth))
+                        path.append(.transactions(TransactionDrillDown(dateFilter: .month(appState.selectedMonth))))
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 28)
             }
-            .background(DaisyTheme.pageGradient.ignoresSafeArea())
+            .background(DaisyTheme.pageBackground.ignoresSafeArea())
             .navigationTitle("Daisy")
+            .navigationDestination(for: Destination.self) { destination in
+                switch destination {
+                case .budget(let month):
+                    BudgetSettingsView(month: month)
+                case .recognitionRecords:
+                    PendingRecognitionsView()
+                case .transactions(let drillDown):
+                    TransactionDrillDownView(drillDown: drillDown)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -159,9 +174,13 @@ private struct BudgetProgressCard: View {
     let hideAmounts: Bool
     let configure: () -> Void
 
-    private var progress: Double {
+    private var ratio: Double {
         guard let amount = budget?.amountMinor, amount > 0 else { return 0 }
-        return min(1, Double(spentMinor) / Double(amount))
+        return Double(spentMinor) / Double(amount)
+    }
+
+    private var progress: Double {
+        min(1, ratio)
     }
 
     var body: some View {
@@ -173,8 +192,11 @@ private struct BudgetProgressCard: View {
                             Text("月度预算")
                                 .font(.headline)
                             if let budget {
-                                let remaining = max(0, budget.amountMinor - spentMinor)
-                                Text(hideAmounts ? "剩余 ••••" : "剩余 \(Money(minorUnits: remaining).formatted())")
+                                let difference = budget.amountMinor - spentMinor
+                                Text(hideAmounts
+                                    ? (difference >= 0 ? "剩余 ••••" : "超出 ••••")
+                                    : "\(difference >= 0 ? "剩余" : "超出") \(Money(minorUnits: abs(difference)).formatted())"
+                                )
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             } else {
@@ -185,9 +207,9 @@ private struct BudgetProgressCard: View {
                         }
                         Spacer()
                         if budget != nil {
-                            Text(progress.formatted(.percent.precision(.fractionLength(0))))
+                            Text(ratio.formatted(.percent.precision(.fractionLength(0))))
                                 .font(.headline.monospacedDigit())
-                                .foregroundStyle(progress >= 1 ? DaisyTheme.danger : DaisyTheme.accent)
+                                .foregroundStyle(ratio >= 1 ? DaisyTheme.danger : DaisyTheme.accent)
                         } else {
                             Text("设置")
                                 .font(.subheadline.weight(.semibold))
@@ -198,7 +220,7 @@ private struct BudgetProgressCard: View {
                     }
 
                     ProgressView(value: progress)
-                        .tint(progress >= 1 ? DaisyTheme.danger : progress > 0.8 ? DaisyTheme.warning : DaisyTheme.accent)
+                        .tint(ratio >= 1 ? DaisyTheme.danger : ratio > 0.8 ? DaisyTheme.warning : DaisyTheme.accent)
                         .scaleEffect(y: 1.7)
                 }
             }
@@ -242,23 +264,11 @@ private struct BalanceHeroCard: View {
         .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [DaisyTheme.navy, DaisyTheme.accent.opacity(0.92)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(alignment: .topTrailing) {
-                    Image(systemName: "camera.macro")
-                        .font(.system(size: 112, weight: .ultraLight))
-                        .foregroundStyle(.white.opacity(0.07))
-                        .offset(x: 18, y: -12)
-                }
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(DaisyTheme.navy)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .shadow(color: DaisyTheme.navy.opacity(0.22), radius: 20, y: 11)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: DaisyTheme.navy.opacity(0.14), radius: 8, y: 4)
     }
 }
 
@@ -296,11 +306,13 @@ private struct SpendingTrendCard: View {
     @State private var selectedDate: Date?
 
     private var points: [DailySpending] {
-        let expenses = transactions.filter { $0.kind == .expense }
+        let expenses = transactions.filter { $0.kind == .expense || $0.kind == .refund }
         let grouped = Dictionary(grouping: expenses) { Calendar.current.startOfDay(for: $0.occurredAt) }
         return grouped.map { date, values in
-            DailySpending(date: date, amountMinor: values.reduce(0) { $0 + $1.amountMinor })
-        }.sorted { $0.date < $1.date }
+            let expense = values.filter { $0.kind == .expense }.reduce(0) { $0 + $1.amountMinor }
+            let refund = values.filter { $0.kind == .refund }.reduce(0) { $0 + $1.amountMinor }
+            return DailySpending(date: date, amountMinor: max(0, expense - refund))
+        }.filter { $0.amountMinor > 0 }.sorted { $0.date < $1.date }
     }
 
     private var selectedPoint: DailySpending? {
@@ -317,7 +329,7 @@ private struct SpendingTrendCard: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("支出趋势")
                             .font(.headline)
-                        Text("按日查看本月消费节奏")
+                        Text("按日查看本月净支出节奏")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

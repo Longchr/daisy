@@ -3,10 +3,15 @@ import SwiftData
 import Charts
 
 struct AnalyticsView: View {
+    private enum Destination: Hashable {
+        case transactions(TransactionDrillDown)
+    }
+
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
     @Query(sort: \LedgerTransaction.occurredAt, order: .reverse) private var transactions: [LedgerTransaction]
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
+    @State private var path: [Destination] = []
 
     private var monthly: [LedgerTransaction] {
         transactions.filter { Calendar.current.isDate($0.occurredAt, equalTo: appState.selectedMonth, toGranularity: .month) }
@@ -31,10 +36,16 @@ struct AnalyticsView: View {
         }.sorted { $0.amountMinor > $1.amountMinor }
     }
 
-    private var expenseMinor: Int64 { categoryTotals.reduce(0) { $0 + $1.amountMinor } }
-    private var incomeMinor: Int64 {
-        monthly.filter { $0.kind == .income || $0.kind == .refund }.reduce(0) { $0 + $1.amountMinor }
+    private var financialSummary: FinancialSummary {
+        FinancialSummary(transactions: monthly)
     }
+
+    private var categorizedExpenseMinor: Int64 {
+        categoryTotals.reduce(0) { $0 + $1.amountMinor }
+    }
+
+    private var expenseMinor: Int64 { financialSummary.netExpenseMinor }
+    private var incomeMinor: Int64 { financialSummary.incomeMinor }
 
     private var monthComparison: SpendingComparison {
         let calendar = Calendar.current
@@ -75,7 +86,7 @@ struct AnalyticsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(spacing: 18) {
                     HStack {
@@ -94,8 +105,14 @@ struct AnalyticsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 28)
             }
-            .background(DaisyTheme.pageGradient.ignoresSafeArea())
+            .background(DaisyTheme.pageBackground.ignoresSafeArea())
             .navigationTitle("分析")
+            .navigationDestination(for: Destination.self) { destination in
+                switch destination {
+                case .transactions(let drillDown):
+                    TransactionDrillDownView(drillDown: drillDown)
+                }
+            }
         }
     }
 
@@ -118,13 +135,13 @@ struct AnalyticsView: View {
 
     private var savingsRate: Double {
         guard incomeMinor > 0 else { return 0 }
-        return max(-1, min(1, Double(incomeMinor - expenseMinor) / Double(incomeMinor)))
+        return max(-1, min(1, Double(financialSummary.balanceMinor) / Double(incomeMinor)))
     }
 
     private func expenseTotal(in interval: DateInterval) -> Int64 {
-        transactions.filter {
-            $0.kind == .expense && interval.contains($0.occurredAt)
-        }.reduce(0) { $0 + $1.amountMinor }
+        FinancialSummary(
+            transactions: transactions.filter { interval.contains($0.occurredAt) }
+        ).netExpenseMinor
     }
 
     private var spendingComparison: some View {
@@ -194,10 +211,10 @@ struct AnalyticsView: View {
                         .frame(height: 230)
 
                         VStack(spacing: 3) {
-                            Text("总支出")
+                            Text("分类支出")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text(settings.hideAmounts ? "••••" : Money(minorUnits: expenseMinor).formatted())
+                            Text(settings.hideAmounts ? "••••" : Money(minorUnits: categorizedExpenseMinor).formatted())
                                 .font(.headline.monospacedDigit())
                         }
                     }
@@ -221,7 +238,10 @@ struct AnalyticsView: View {
                 } else {
                     ForEach(Array(categoryTotals.prefix(6).enumerated()), id: \.element.id) { index, item in
                         Button {
-                            appState.showTransactions(.month(appState.selectedMonth), categoryID: item.id)
+                            path.append(.transactions(TransactionDrillDown(
+                                dateFilter: .month(appState.selectedMonth),
+                                categoryID: item.id
+                            )))
                         } label: {
                             HStack(spacing: 12) {
                                 CategoryIcon(symbol: item.symbol, tint: item.tint, size: 40)
@@ -233,7 +253,7 @@ struct AnalyticsView: View {
                                         Text(settings.hideAmounts ? "••••" : Money(minorUnits: item.amountMinor).formatted())
                                             .font(.subheadline.monospacedDigit().weight(.semibold))
                                     }
-                                    ProgressView(value: expenseMinor == 0 ? 0 : Double(item.amountMinor) / Double(expenseMinor))
+                                    ProgressView(value: categorizedExpenseMinor == 0 ? 0 : Double(item.amountMinor) / Double(categorizedExpenseMinor))
                                         .tint(item.tint)
                                 }
                                 Image(systemName: "chevron.right")
@@ -325,7 +345,7 @@ private struct MiniMetricCard: View {
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(tint)
                     .frame(width: 34, height: 34)
-                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.caption)

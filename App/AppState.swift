@@ -9,7 +9,7 @@ final class AppState: ObservableObject {
         case settings
     }
 
-    enum TransactionDateFilter: Equatable {
+    enum TransactionDateFilter: Hashable {
         case day(Date)
         case month(Date)
 
@@ -32,12 +32,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    enum SettingsDestination: Hashable {
-        case budget(Date)
-        case recognitionRecords
-        case recurringReminders
-    }
-
     struct Toast: Equatable {
         enum Style {
             case success
@@ -53,31 +47,10 @@ final class AppState: ObservableObject {
 
     @Published var selectedTab: Tab = .dashboard
     @Published var selectedMonth = Date()
-    @Published var transactionDateFilter: TransactionDateFilter?
-    @Published var transactionCategoryID: String?
-    @Published var settingsPath = NavigationPath()
     @Published var isPresentingAddTransaction = false
     @Published var isPresentingRecognitionImport = false
     @Published var toast: Toast?
     private var toastAction: (() -> Void)?
-
-    func showTransactions(_ filter: TransactionDateFilter, categoryID: String? = nil) {
-        transactionDateFilter = filter
-        transactionCategoryID = categoryID
-        selectedTab = .transactions
-    }
-
-    func showBudgetSettings(for month: Date) {
-        settingsPath = NavigationPath()
-        settingsPath.append(SettingsDestination.budget(month))
-        selectedTab = .settings
-    }
-
-    func showRecognitionRecords() {
-        settingsPath = NavigationPath()
-        settingsPath.append(SettingsDestination.recognitionRecords)
-        selectedTab = .settings
-    }
 
     func presentToast(
         _ message: String,

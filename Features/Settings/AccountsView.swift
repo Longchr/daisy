@@ -3,6 +3,7 @@ import SwiftData
 
 struct AccountsView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
     @Query(sort: \LedgerTransaction.occurredAt, order: .reverse) private var transactions: [LedgerTransaction]
@@ -18,8 +19,7 @@ struct AccountsView: View {
                     accountRow(account)
                         .swipeActions {
                             Button("归档") {
-                                account.isArchived = true
-                                try? modelContext.save()
+                                setArchived(true, for: account)
                             }
                             .tint(.orange)
                         }
@@ -36,8 +36,7 @@ struct AccountsView: View {
                         accountRow(account)
                             .swipeActions {
                                 Button("恢复") {
-                                    account.isArchived = false
-                                    try? modelContext.save()
+                                    setArchived(false, for: account)
                                 }
                                 .tint(DaisyTheme.income)
                             }
@@ -63,7 +62,7 @@ struct AccountsView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DaisyTheme.accent)
                 .frame(width: 38, height: 38)
-                .background(DaisyTheme.accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(DaisyTheme.accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text(account.name).font(.body.weight(.medium))
                 Text("\(account.type.title) · \(account.currencyCode)")
@@ -86,11 +85,23 @@ struct AccountsView: View {
         }
         .accessibilityElement(children: .combine)
     }
+
+    private func setArchived(_ isArchived: Bool, for account: Account) {
+        account.isArchived = isArchived
+        do {
+            try modelContext.save()
+            appState.presentToast(isArchived ? "账户已归档" : "账户已恢复")
+        } catch {
+            modelContext.rollback()
+            appState.presentToast("账户更新失败", style: .error)
+        }
+    }
 }
 
 private struct AddAccountView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appState: AppState
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
 
     @State private var name = ""
@@ -139,8 +150,14 @@ private struct AddAccountView: View {
                             openingBalanceMinor: openingBalance,
                             sortOrder: accounts.count
                         ))
-                        try? modelContext.save()
-                        dismiss()
+                        do {
+                            try modelContext.save()
+                            appState.presentToast("账户已添加")
+                            dismiss()
+                        } catch {
+                            modelContext.rollback()
+                            appState.presentToast("账户保存失败", style: .error)
+                        }
                     }
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
