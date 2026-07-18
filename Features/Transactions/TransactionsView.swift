@@ -37,69 +37,70 @@ struct TransactionsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if transactions.isEmpty {
-                    ContentUnavailableView {
-                        Label("还没有账单", systemImage: "leaf")
-                    } description: {
-                        Text("记下第一笔收支，Daisy 会从这里帮你整理。")
-                    } actions: {
-                        Button("记一笔") {
-                            appState.isPresentingAddTransaction = true
+            VStack(spacing: 0) {
+                activeFilterBar
+
+                Group {
+                    if transactions.isEmpty {
+                        ContentUnavailableView {
+                            Label("还没有账单", systemImage: "leaf")
+                        } description: {
+                            Text("记下第一笔收支，Daisy 会从这里帮你整理。")
+                        } actions: {
+                            Button("记一笔") {
+                                appState.isPresentingAddTransaction = true
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.borderedProminent)
-                    }
-                } else if sections.isEmpty {
-                    ContentUnavailableView {
-                        Label("没有符合条件的账单", systemImage: "line.3.horizontal.decrease.circle")
-                    } description: {
-                        Text(searchText.isEmpty ? "当前类型下还没有账单。" : "试试其他关键词或清除筛选条件。")
-                    } actions: {
-                        Button("清除筛选") {
-                            searchText = ""
-                            selectedKind = nil
-                            appState.transactionDateFilter = nil
-                            appState.transactionCategoryID = nil
+                    } else if sections.isEmpty {
+                        ContentUnavailableView {
+                            Label("没有符合条件的账单", systemImage: "line.3.horizontal.decrease.circle")
+                        } description: {
+                            Text(searchText.isEmpty ? "当前类型下还没有账单。" : "试试其他关键词或清除筛选条件。")
+                        } actions: {
+                            Button("清除筛选") {
+                                searchText = ""
+                                selectedKind = nil
+                                appState.transactionDateFilter = nil
+                                appState.transactionCategoryID = nil
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.bordered)
-                    }
-                } else {
-                    List {
-                        ForEach(sections, id: \.date) { section in
-                            Section {
-                                ForEach(section.items) { transaction in
-                                    NavigationLink {
-                                        TransactionDetailView(transaction: transaction)
-                                    } label: {
-                                        TransactionRow(
-                                            transaction: transaction,
-                                            category: categoryMap[transaction.categoryID],
-                                            hideAmount: settings.hideAmounts
-                                        )
-                                    }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button(role: .destructive) {
-                                            delete(transaction)
+                    } else {
+                        List {
+                            ForEach(sections, id: \.date) { section in
+                                Section {
+                                    ForEach(section.items) { transaction in
+                                        NavigationLink {
+                                            TransactionDetailView(transaction: transaction)
                                         } label: {
-                                            Label("删除", systemImage: "trash")
+                                            TransactionRow(
+                                                transaction: transaction,
+                                                category: categoryMap[transaction.categoryID],
+                                                hideAmount: settings.hideAmounts
+                                            )
                                         }
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                            Button(role: .destructive) {
+                                                delete(transaction)
+                                            } label: {
+                                                Label("删除", systemImage: "trash")
+                                            }
+                                        }
+                                        .accessibilityHint("查看、编辑或删除这笔账单")
                                     }
-                                    .accessibilityHint("查看、编辑或删除这笔账单")
+                                } header: {
+                                    Text(section.date.formatted(.dateTime.month().day().weekday(.wide)))
+                                        .textCase(nil)
                                 }
-                            } header: {
-                                Text(section.date.formatted(.dateTime.month().day().weekday(.wide)))
-                                    .textCase(nil)
                             }
                         }
+                        .listStyle(.insetGrouped)
                     }
-                    .listStyle(.insetGrouped)
                 }
             }
             .navigationTitle("账单")
             .searchable(text: $searchText, prompt: "搜索商户、分类或备注")
-            .safeAreaInset(edge: .top, spacing: 0) {
-                activeFilterBar
-            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -108,7 +109,7 @@ struct TransactionsView: View {
                             ForEach(TransactionKind.allCases) { kind in
                                 Label(kind.title, systemImage: kind.systemImage)
                                     .tag(Optional(kind))
-                        }
+                            }
                         }
                     } label: {
                         Label(selectedKind?.title ?? "筛选", systemImage: "line.3.horizontal.decrease.circle")
