@@ -7,10 +7,14 @@ struct BudgetSettingsView: View {
     @Query(sort: \MonthlyBudget.monthStart, order: .reverse) private var budgets: [MonthlyBudget]
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
 
-    @State private var selectedMonth = Date()
+    @State private var selectedMonth: Date
     @State private var amountText = ""
     @State private var isAddingCategoryBudget = false
     @State private var editingCategoryBudget: MonthlyBudget?
+
+    init(month: Date = Date()) {
+        _selectedMonth = State(initialValue: month)
+    }
 
     private var existing: MonthlyBudget? {
         budgets.first {

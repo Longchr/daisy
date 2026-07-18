@@ -97,6 +97,65 @@ struct SavedTransaction: Sendable {
     }
 }
 
+struct LedgerTransactionSnapshot: Sendable {
+    let id: UUID
+    let kind: TransactionKind
+    let amountMinor: Int64
+    let currencyCode: String
+    let currencyExponent: Int
+    let merchant: String
+    let categoryID: String
+    let accountID: UUID?
+    let destinationAccountID: UUID?
+    let occurredAt: Date
+    let note: String
+    let source: TransactionSource
+    let confidence: Double?
+    let idempotencyKey: String?
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(_ transaction: LedgerTransaction) {
+        id = transaction.id
+        kind = transaction.kind
+        amountMinor = transaction.amountMinor
+        currencyCode = transaction.currencyCode
+        currencyExponent = transaction.currencyExponent
+        merchant = transaction.merchant
+        categoryID = transaction.categoryID
+        accountID = transaction.accountID
+        destinationAccountID = transaction.destinationAccountID
+        occurredAt = transaction.occurredAt
+        note = transaction.note
+        source = transaction.source
+        confidence = transaction.confidence
+        idempotencyKey = transaction.idempotencyKey
+        createdAt = transaction.createdAt
+        updatedAt = transaction.updatedAt
+    }
+
+    func makeTransaction() -> LedgerTransaction {
+        LedgerTransaction(
+            id: id,
+            kind: kind,
+            amountMinor: amountMinor,
+            currencyCode: currencyCode,
+            currencyExponent: currencyExponent,
+            merchant: merchant,
+            categoryID: categoryID,
+            accountID: accountID,
+            destinationAccountID: destinationAccountID,
+            occurredAt: occurredAt,
+            note: note,
+            source: source,
+            confidence: confidence,
+            idempotencyKey: idempotencyKey,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+}
+
 @Model
 final class Account {
     @Attribute(.unique) var id: UUID

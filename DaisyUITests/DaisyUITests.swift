@@ -44,6 +44,59 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["UI 测试咖啡"].waitForExistence(timeout: 5))
     }
 
+    func testRecentTransactionOpensDetailAndCanEdit() {
+        let addTransaction = app.buttons["addTransactionButton"]
+        XCTAssertTrue(addTransaction.waitForExistence(timeout: 5))
+        tapReliably(addTransaction)
+        app.buttons["手动记账"].tap()
+        app.textFields["amountField"].typeText("28.50")
+        app.textFields["merchantField"].tap()
+        app.textFields["merchantField"].typeText("最近测试账单")
+        app.buttons["saveTransactionButton"].tap()
+
+        XCTAssertTrue(app.staticTexts["最近账单"].waitForExistence(timeout: 5))
+        let recentTransaction = app.staticTexts["最近测试账单"]
+        XCTAssertTrue(recentTransaction.waitForExistence(timeout: 3))
+        recentTransaction.tap()
+
+        XCTAssertTrue(app.navigationBars["账单详情"].waitForExistence(timeout: 3))
+        let editButton = app.buttons["editTransactionButton"]
+        XCTAssertTrue(editButton.exists)
+        editButton.tap()
+        XCTAssertTrue(app.navigationBars["编辑账单"].waitForExistence(timeout: 3))
+    }
+
+    func testDeletedTransactionCanBeUndone() {
+        let addTransaction = app.buttons["addTransactionButton"]
+        XCTAssertTrue(addTransaction.waitForExistence(timeout: 5))
+        tapReliably(addTransaction)
+        app.buttons["手动记账"].tap()
+        app.textFields["amountField"].typeText("16.80")
+        app.textFields["merchantField"].tap()
+        app.textFields["merchantField"].typeText("撤销测试账单")
+        app.buttons["saveTransactionButton"].tap()
+
+        app.tabBars.buttons["账单"].tap()
+        let transaction = app.staticTexts["撤销测试账单"]
+        XCTAssertTrue(transaction.waitForExistence(timeout: 5))
+        transaction.swipeLeft()
+        app.buttons["删除"].tap()
+
+        let undo = app.buttons["撤销"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 3))
+        undo.tap()
+        XCTAssertTrue(app.staticTexts["撤销测试账单"].waitForExistence(timeout: 3))
+    }
+
+    func testDashboardBudgetCardOpensBudgetSettings() {
+        let budgetCard = app.buttons["dashboardBudgetCard"]
+        XCTAssertTrue(budgetCard.waitForExistence(timeout: 5))
+        budgetCard.tap()
+
+        XCTAssertTrue(app.navigationBars["月度预算"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
+    }
+
     func testAISettingsExposeDirectConnectionFields() {
         app.tabBars.buttons["设置"].tap()
         app.staticTexts["AI 识别服务"].tap()

@@ -59,7 +59,7 @@ struct RootView: View {
             }
 
             if let toast = appState.toast {
-                ToastView(toast: toast)
+                ToastView(toast: toast, action: appState.performToastAction)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(3)
             }

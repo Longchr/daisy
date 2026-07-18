@@ -4,9 +4,13 @@ import SwiftData
 struct TransactionDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var settings: AppSettings
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
     @Bindable var transaction: LedgerTransaction
+    @State private var isEditing = false
+    @State private var isConfirmingDelete = false
 
     private var category: LedgerCategory? { categories.first { $0.id == transaction.categoryID } }
     private var account: Account? { accounts.first { $0.id == transaction.accountID } }
@@ -21,9 +25,11 @@ struct TransactionDetailView: View {
                         tint: Color(hex: category?.tintHex ?? "8A8A8E"),
                         size: 58
                     )
-                    Text("\(transaction.kind.amountPrefix)\(transaction.money.formatted())")
-                        .font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(DaisyTheme.amountColor(for: transaction.kind))
+                    TransactionAmount(
+                        transaction: transaction,
+                        hideAmount: settings.hideAmounts,
+                        font: .system(size: 34, weight: .semibold, design: .rounded).monospacedDigit()
+                    )
                     Text(transaction.merchant)
                         .font(.headline)
                 }
@@ -51,14 +57,32 @@ struct TransactionDetailView: View {
             }
 
             Section {
-                Button("删除账单", role: .destructive) {
-                    modelContext.delete(transaction)
-                    try? modelContext.save()
-                    dismiss()
-                }
+                Button("删除账单", role: .destructive) { isConfirmingDelete = true }
             }
         }
         .navigationTitle("账单详情")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("编辑") { isEditing = true }
+                    .fontWeight(.semibold)
+                    .accessibilityIdentifier("editTransactionButton")
+            }
+        }
+        .sheet(isPresented: $isEditing) {
+            AddTransactionView(transaction: transaction)
+        }
+        .confirmationDialog("删除这笔账单？", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("删除账单", role: .destructive, action: deleteTransaction)
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("删除后可在提示消失前撤销。")
+        }
+    }
+
+    private func deleteTransaction() {
+        if TransactionDeletion.delete(transaction, in: modelContext, appState: appState) {
+            dismiss()
+        }
     }
 }

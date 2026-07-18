@@ -2,13 +2,14 @@ import SwiftUI
 import SwiftData
 
 struct SettingsView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appLock: AppLockController
     @Query private var drafts: [RecognitionDraft]
     @State private var aiConfiguration = AIConfigurationStore.load()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $appState.settingsPath) {
             List {
                 Section {
                     NavigationLink {
@@ -73,9 +74,7 @@ struct SettingsView: View {
                 }
 
                 Section("账本配置") {
-                    NavigationLink {
-                        BudgetSettingsView()
-                    } label: {
+                    NavigationLink(value: AppState.SettingsDestination.budget(appState.selectedMonth)) {
                         Label("月度预算", systemImage: "gauge.with.dots.needle.67percent")
                     }
                     NavigationLink {
@@ -147,6 +146,12 @@ struct SettingsView: View {
                 aiConfiguration = AIConfigurationStore.load()
             }
             .navigationTitle("设置")
+            .navigationDestination(for: AppState.SettingsDestination.self) { destination in
+                switch destination {
+                case .budget(let month):
+                    BudgetSettingsView(month: month)
+                }
+            }
         }
     }
 

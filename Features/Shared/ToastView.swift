@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ToastView: View {
     let toast: AppState.Toast
+    let action: () -> Void
 
     private var symbol: String {
         switch toast.style {
@@ -28,6 +29,12 @@ struct ToastView: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
                 Spacer(minLength: 0)
+                if let actionTitle = toast.actionTitle {
+                    Button(actionTitle, action: action)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(DaisyTheme.accent)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 13)

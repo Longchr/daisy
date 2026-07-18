@@ -9,15 +9,31 @@ struct AddTransactionView: View {
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
 
-    @State private var kind: TransactionKind = .expense
-    @State private var amountText = ""
-    @State private var merchant = ""
-    @State private var selectedCategoryID = ""
+    private let transaction: LedgerTransaction?
+
+    @State private var kind: TransactionKind
+    @State private var amountText: String
+    @State private var merchant: String
+    @State private var selectedCategoryID: String
     @State private var selectedAccountID: UUID?
     @State private var selectedDestinationAccountID: UUID?
-    @State private var occurredAt = Date()
-    @State private var note = ""
+    @State private var occurredAt: Date
+    @State private var note: String
     @FocusState private var amountFocused: Bool
+
+    init(transaction: LedgerTransaction? = nil) {
+        self.transaction = transaction
+        _kind = State(initialValue: transaction?.kind ?? .expense)
+        _amountText = State(initialValue: transaction.map(Self.amountText(for:)) ?? "")
+        _merchant = State(initialValue: transaction?.merchant ?? "")
+        _selectedCategoryID = State(initialValue: transaction?.categoryID ?? "")
+        _selectedAccountID = State(initialValue: transaction?.accountID)
+        _selectedDestinationAccountID = State(initialValue: transaction?.destinationAccountID)
+        _occurredAt = State(initialValue: transaction?.occurredAt ?? Date())
+        _note = State(initialValue: transaction?.note ?? "")
+    }
+
+    private var isEditing: Bool { transaction != nil }
 
     private var availableCategories: [LedgerCategory] {
         categories.filter { category in
@@ -101,7 +117,7 @@ struct AddTransactionView: View {
                         .lineLimit(2...5)
                 }
             }
-            .navigationTitle("记一笔")
+            .navigationTitle(isEditing ? "编辑账单" : "记一笔")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -115,10 +131,10 @@ struct AddTransactionView: View {
                 }
             }
             .onAppear {
-                selectDefaultCategory()
-                selectedAccountID = accounts.first?.id
+                if selectedCategoryID.isEmpty { selectDefaultCategory() }
+                if selectedAccountID == nil && !isEditing { selectedAccountID = accounts.first?.id }
                 selectDefaultDestinationAccount()
-                amountFocused = true
+                if !isEditing { amountFocused = true }
             }
             .onChange(of: kind) { _, _ in
                 selectDefaultCategory()
@@ -153,24 +169,47 @@ struct AddTransactionView: View {
     private func save() {
         guard let money = parsedMoney, money.minorUnits > 0 else { return }
         let fallbackName = availableCategories.first(where: { $0.id == selectedCategoryID })?.name ?? kind.title
-        let transaction = LedgerTransaction(
-            kind: kind,
-            amountMinor: money.minorUnits,
-            merchant: merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallbackName : merchant,
-            categoryID: selectedCategoryID,
-            accountID: selectedAccountID,
-            destinationAccountID: kind == .transfer ? selectedDestinationAccountID : nil,
-            occurredAt: occurredAt,
-            note: note.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
-        modelContext.insert(transaction)
+        let normalizedMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let transaction {
+            transaction.kind = kind
+            transaction.amountMinor = money.minorUnits
+            transaction.merchant = normalizedMerchant.isEmpty ? fallbackName : normalizedMerchant
+            transaction.categoryID = selectedCategoryID
+            transaction.accountID = selectedAccountID
+            transaction.destinationAccountID = kind == .transfer ? selectedDestinationAccountID : nil
+            transaction.occurredAt = occurredAt
+            transaction.note = normalizedNote
+            transaction.updatedAt = Date()
+        } else {
+            modelContext.insert(LedgerTransaction(
+                kind: kind,
+                amountMinor: money.minorUnits,
+                merchant: normalizedMerchant.isEmpty ? fallbackName : normalizedMerchant,
+                categoryID: selectedCategoryID,
+                accountID: selectedAccountID,
+                destinationAccountID: kind == .transfer ? selectedDestinationAccountID : nil,
+                occurredAt: occurredAt,
+                note: normalizedNote
+            ))
+        }
         do {
             try modelContext.save()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             dismiss()
-            appState.presentToast("已记下 \(money.formatted())")
+            appState.presentToast(isEditing ? "账单已更新" : "已记下 \(money.formatted())")
         } catch {
             appState.presentToast("保存失败，请重试", style: .error)
         }
+    }
+
+    private static func amountText(for transaction: LedgerTransaction) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = transaction.currencyExponent
+        formatter.maximumFractionDigits = transaction.currencyExponent
+        return formatter.string(from: NSDecimalNumber(decimal: transaction.money.decimalValue)) ?? ""
     }
 }

@@ -18,12 +18,13 @@ struct TransactionsView: View {
     private var filtered: [LedgerTransaction] {
         transactions.filter { transaction in
             let matchesKind = selectedKind == nil || transaction.kind == selectedKind
+            let matchesDate = appState.transactionDateFilter?.contains(transaction.occurredAt) ?? true
             let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             let matchesQuery = query.isEmpty
                 || transaction.merchant.localizedCaseInsensitiveContains(query)
                 || (categoryMap[transaction.categoryID]?.name.localizedCaseInsensitiveContains(query) ?? false)
                 || transaction.note.localizedCaseInsensitiveContains(query)
-            return matchesKind && matchesQuery
+            return matchesKind && matchesDate && matchesQuery
         }
     }
 
@@ -35,8 +36,30 @@ struct TransactionsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if sections.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                if transactions.isEmpty {
+                    ContentUnavailableView {
+                        Label("还没有账单", systemImage: "leaf")
+                    } description: {
+                        Text("记下第一笔收支，Daisy 会从这里帮你整理。")
+                    } actions: {
+                        Button("记一笔") {
+                            appState.isPresentingAddTransaction = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                } else if sections.isEmpty {
+                    ContentUnavailableView {
+                        Label("没有符合条件的账单", systemImage: "line.3.horizontal.decrease.circle")
+                    } description: {
+                        Text(searchText.isEmpty ? "当前类型下还没有账单。" : "试试其他关键词或清除筛选条件。")
+                    } actions: {
+                        Button("清除筛选") {
+                            searchText = ""
+                            selectedKind = nil
+                            appState.transactionDateFilter = nil
+                        }
+                        .buttonStyle(.bordered)
+                    }
                 } else {
                     List {
                         ForEach(sections, id: \.date) { section in
@@ -51,13 +74,14 @@ struct TransactionsView: View {
                                             hideAmount: settings.hideAmounts
                                         )
                                     }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                         Button(role: .destructive) {
                                             delete(transaction)
                                         } label: {
                                             Label("删除", systemImage: "trash")
                                         }
                                     }
+                                    .accessibilityHint("查看、编辑或删除这笔账单")
                                 }
                             } header: {
                                 Text(section.date.formatted(.dateTime.month().day().weekday(.wide)))
@@ -70,21 +94,23 @@ struct TransactionsView: View {
             }
             .navigationTitle("账单")
             .searchable(text: $searchText, prompt: "搜索商户、分类或备注")
+            .safeAreaInset(edge: .top, spacing: 0) {
+                activeFilterBar
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
-                        Button("全部") { selectedKind = nil }
-                        Divider()
-                        ForEach(TransactionKind.allCases) { kind in
-                            Button {
-                                selectedKind = kind
-                            } label: {
+                        Picker("账单类型", selection: $selectedKind) {
+                            Text("全部").tag(Optional<TransactionKind>.none)
+                            ForEach(TransactionKind.allCases) { kind in
                                 Label(kind.title, systemImage: kind.systemImage)
-                            }
+                                    .tag(Optional(kind))
+                        }
                         }
                     } label: {
                         Label(selectedKind?.title ?? "筛选", systemImage: "line.3.horizontal.decrease.circle")
                     }
+                    .accessibilityLabel(selectedKind == nil ? "筛选账单" : "当前筛选：\(selectedKind?.title ?? "全部")")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -99,11 +125,67 @@ struct TransactionsView: View {
         }
     }
 
+    @ViewBuilder
+    private var activeFilterBar: some View {
+        if appState.transactionDateFilter != nil || selectedKind != nil {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    if let dateFilter = appState.transactionDateFilter {
+                        filterControl(
+                            title: dateFilter.title,
+                            symbol: "calendar",
+                            accessibilityLabel: "清除日期筛选"
+                        ) {
+                            appState.transactionDateFilter = nil
+                        }
+                    }
+                    if appState.transactionDateFilter != nil && selectedKind != nil {
+                        Divider()
+                            .frame(height: 22)
+                            .padding(.horizontal, 4)
+                    }
+                    if let selectedKind {
+                        filterControl(
+                            title: "只看\(selectedKind.title)",
+                            symbol: selectedKind.systemImage,
+                            accessibilityLabel: "清除类型筛选"
+                        ) {
+                            self.selectedKind = nil
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            .background(.bar)
+            .overlay(alignment: .bottom) { Divider() }
+        }
+    }
+
+    private func filterControl(
+        title: String,
+        symbol: String,
+        accessibilityLabel: String,
+        clear: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 2) {
+            Label(title, systemImage: symbol)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier(symbol == "calendar" ? "activeDateFilter" : "activeKindFilter")
+            Button {
+                withAnimation(.snappy) { clear() }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(accessibilityLabel)
+        }
+    }
+
     private func delete(_ transaction: LedgerTransaction) {
         withAnimation(.snappy) {
-            modelContext.delete(transaction)
-            try? modelContext.save()
+            TransactionDeletion.delete(transaction, in: modelContext, appState: appState)
         }
-        appState.presentToast("账单已删除", style: .warning)
     }
 }

@@ -4,6 +4,7 @@ struct TransactionRow: View {
     let transaction: LedgerTransaction
     let category: LedgerCategory?
     var hideAmount = false
+    var showsDisclosureIndicator = false
 
     private var merchantTitle: String {
         transaction.merchant.isEmpty ? (category?.name ?? "未命名账单") : transaction.merchant
@@ -36,14 +37,54 @@ struct TransactionRow: View {
 
             Spacer(minLength: 8)
 
-            Text(hideAmount ? "••••" : "\(transaction.kind.amountPrefix)\(transaction.money.formatted())")
-                .font(.body.monospacedDigit().weight(.semibold))
-                .foregroundStyle(DaisyTheme.amountColor(for: transaction.kind))
-                .contentTransition(.numericText())
+            TransactionAmount(transaction: transaction, hideAmount: hideAmount)
+
+            if showsDisclosureIndicator {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
         }
         .padding(.vertical, 5)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(merchantTitle)，\(transaction.kind.title)，\(transaction.money.formatted())")
+        .accessibilityLabel(
+            hideAmount
+                ? "\(merchantTitle)，\(transaction.kind.title)，金额已隐藏"
+                : "\(merchantTitle)，\(transaction.kind.title)，\(transaction.money.formatted())"
+        )
+    }
+}
+
+struct TransactionAmount: View {
+    let transaction: LedgerTransaction
+    var hideAmount = false
+    var font: Font = .body.monospacedDigit().weight(.semibold)
+
+    var body: some View {
+        Group {
+            if hideAmount {
+                Text("••••")
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(transaction.kind.amountPrefix)
+                        .frame(width: 12, alignment: .trailing)
+                    Text(transaction.money.formatted())
+                }
+                .fixedSize(horizontal: true, vertical: false)
+            }
+        }
+        .font(font)
+        .foregroundStyle(DaisyTheme.amountColor(for: transaction.kind))
+        .contentTransition(.numericText())
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .layoutPriority(1)
+        .accessibilityLabel(
+            hideAmount
+                ? "金额已隐藏"
+                : "\(transaction.kind.title)\(transaction.money.formatted())"
+        )
     }
 }

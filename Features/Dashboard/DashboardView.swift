@@ -59,17 +59,19 @@ struct DashboardView: View {
                     )
 
                     BudgetProgressCard(budget: currentBudget, spentMinor: expenseMinor, hideAmounts: settings.hideAmounts) {
-                        appState.selectedTab = .settings
+                        appState.showBudgetSettings(for: appState.selectedMonth)
                     }
 
-                    SpendingTrendCard(transactions: monthlyTransactions)
+                    SpendingTrendCard(transactions: monthlyTransactions) { date in
+                        appState.showTransactions(.day(date))
+                    }
 
                     RecentTransactionsCard(
                         transactions: Array(monthlyTransactions.prefix(5)),
                         categoryMap: categoryMap,
                         hideAmounts: settings.hideAmounts
                     ) {
-                        appState.selectedTab = .transactions
+                        appState.showTransactions(.month(appState.selectedMonth))
                     }
                 }
                 .padding(.horizontal, 16)
@@ -114,39 +116,47 @@ private struct BudgetProgressCard: View {
     }
 
     var body: some View {
-        DaisyCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("月度预算")
-                            .font(.headline)
-                        if let budget {
-                            let remaining = max(0, budget.amountMinor - spentMinor)
-                            Text(hideAmounts ? "剩余 ••••" : "剩余 \(Money(minorUnits: remaining).formatted())")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("设置一个舒适的消费边界")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+        Button(action: configure) {
+            DaisyCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("月度预算")
+                                .font(.headline)
+                            if let budget {
+                                let remaining = max(0, budget.amountMinor - spentMinor)
+                                Text(hideAmounts ? "剩余 ••••" : "剩余 \(Money(minorUnits: remaining).formatted())")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("设置一个舒适的消费边界")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        Spacer()
+                        if budget != nil {
+                            Text(progress.formatted(.percent.precision(.fractionLength(0))))
+                                .font(.headline.monospacedDigit())
+                                .foregroundStyle(progress >= 1 ? DaisyTheme.danger : DaisyTheme.accent)
+                        } else {
+                            Text("设置")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
                     }
-                    Spacer()
-                    if budget == nil {
-                        Button("设置", action: configure)
-                            .font(.subheadline.weight(.semibold))
-                    } else {
-                        Text(progress.formatted(.percent.precision(.fractionLength(0))))
-                            .font(.headline.monospacedDigit())
-                            .foregroundStyle(progress >= 1 ? DaisyTheme.danger : DaisyTheme.accent)
-                    }
-                }
 
-                ProgressView(value: progress)
-                    .tint(progress >= 1 ? DaisyTheme.danger : progress > 0.8 ? DaisyTheme.warning : DaisyTheme.accent)
-                    .scaleEffect(y: 1.7)
+                    ProgressView(value: progress)
+                        .tint(progress >= 1 ? DaisyTheme.danger : progress > 0.8 ? DaisyTheme.warning : DaisyTheme.accent)
+                        .scaleEffect(y: 1.7)
+                }
             }
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dashboardBudgetCard")
+        .accessibilityHint("打开月度预算设置")
     }
 }
 
@@ -232,6 +242,9 @@ private struct DailySpending: Identifiable {
 
 private struct SpendingTrendCard: View {
     let transactions: [LedgerTransaction]
+    let showTransactions: (Date) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var selectedDate: Date?
 
     private var points: [DailySpending] {
         let expenses = transactions.filter { $0.kind == .expense }
@@ -239,6 +252,13 @@ private struct SpendingTrendCard: View {
         return grouped.map { date, values in
             DailySpending(date: date, amountMinor: values.reduce(0) { $0 + $1.amountMinor })
         }.sorted { $0.date < $1.date }
+    }
+
+    private var selectedPoint: DailySpending? {
+        guard let selectedDate else { return nil }
+        return points.min {
+            abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate))
+        }
     }
 
     var body: some View {
@@ -278,6 +298,18 @@ private struct SpendingTrendCard: View {
                         .foregroundStyle(DaisyTheme.accent)
                         .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                         .interpolationMethod(.catmullRom)
+
+                        if selectedPoint?.id == point.id {
+                            RuleMark(x: .value("选中日期", point.date, unit: .day))
+                                .foregroundStyle(DaisyTheme.accent.opacity(0.35))
+                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            PointMark(
+                                x: .value("选中日期", point.date, unit: .day),
+                                y: .value("选中支出", Double(point.amountMinor) / 100)
+                            )
+                            .foregroundStyle(DaisyTheme.accent)
+                            .symbolSize(55)
+                        }
                     }
                     .chartXAxis {
                         AxisMarks(values: .automatic(desiredCount: 5)) { value in
@@ -286,11 +318,40 @@ private struct SpendingTrendCard: View {
                         }
                     }
                     .chartYAxis(.hidden)
+                    .chartXSelection(value: $selectedDate)
                     .frame(height: 160)
-                    .accessibilityLabel("本月支出趋势图")
+                    .accessibilityIdentifier("spendingTrendChart")
+                    .accessibilityLabel("本月支出趋势图，可选择日期查看账单")
+
+                    if let selectedPoint {
+                        Button {
+                            showTransactions(selectedPoint.date)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Label(
+                                    selectedPoint.date.formatted(.dateTime.month().day().weekday(.abbreviated)),
+                                    systemImage: "calendar"
+                                )
+                                .font(.subheadline.weight(.medium))
+                                Spacer()
+                                Text(Money(minorUnits: selectedPoint.amountMinor).formatted())
+                                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                                    .foregroundStyle(DaisyTheme.expense)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .frame(minHeight: 44)
+                        .accessibilityHint("查看当天账单")
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
             }
         }
+        .animation(reduceMotion ? nil : .snappy, value: selectedPoint?.id)
     }
 }
 
@@ -317,11 +378,18 @@ private struct RecentTransactionsCard: View {
                         .frame(height: 170)
                 } else {
                     ForEach(Array(transactions.enumerated()), id: \.element.id) { index, transaction in
-                        TransactionRow(
-                            transaction: transaction,
-                            category: categoryMap[transaction.categoryID],
-                            hideAmount: hideAmounts
-                        )
+                        NavigationLink {
+                            TransactionDetailView(transaction: transaction)
+                        } label: {
+                            TransactionRow(
+                                transaction: transaction,
+                                category: categoryMap[transaction.categoryID],
+                                hideAmount: hideAmounts,
+                                showsDisclosureIndicator: true
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("查看账单详情")
                         if index < transactions.count - 1 {
                             Divider().padding(.leading, 57)
                         }
