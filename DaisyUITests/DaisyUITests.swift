@@ -144,8 +144,8 @@ final class DaisyUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["账单"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.tabBars.buttons["账单"].isSelected)
-        XCTAssertTrue(app.staticTexts["餐饮"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["分析测试账单"].exists)
+        XCTAssertTrue(app.buttons["清除分类筛选"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["分析测试账单"].waitForExistence(timeout: 3))
     }
 
     func testDisabledRecurringReminderCanBeSavedWithoutPermissionPrompt() {
