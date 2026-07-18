@@ -133,6 +133,7 @@ final class DaisyUITests: XCTestCase {
 
     func testAnalyticsCategoryOpensFilteredTransactions() {
         createManualTransaction(amount: "48.50", merchant: "分析测试账单")
+        createManualTransaction(amount: "88.00", merchant: "分类外收入", kind: "收入")
         app.tabBars.buttons["分析"].tap()
         XCTAssertTrue(app.staticTexts["支出变化"].waitForExistence(timeout: 5))
         app.swipeUp()
@@ -144,8 +145,8 @@ final class DaisyUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["账单"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.tabBars.buttons["账单"].isSelected)
-        XCTAssertTrue(app.buttons["清除分类筛选"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["分析测试账单"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["分类外收入"].exists)
     }
 
     func testDisabledRecurringReminderCanBeSavedWithoutPermissionPrompt() {
@@ -239,11 +240,12 @@ final class DaisyUITests: XCTestCase {
         }
     }
 
-    private func createManualTransaction(amount: String, merchant: String) {
+    private func createManualTransaction(amount: String, merchant: String, kind: String? = nil) {
         let addTransaction = app.buttons["addTransactionButton"]
         XCTAssertTrue(addTransaction.waitForExistence(timeout: 5))
         tapReliably(addTransaction)
         app.buttons["手动记账"].tap()
+        if let kind { app.buttons[kind].tap() }
         app.textFields["amountField"].typeText(amount)
         app.textFields["merchantField"].tap()
         app.textFields["merchantField"].typeText(merchant)
