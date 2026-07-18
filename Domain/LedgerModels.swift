@@ -309,3 +309,38 @@ final class MonthlyBudget {
         self.updatedAt = updatedAt
     }
 }
+
+@Model
+final class RecurringReminder {
+    @Attribute(.unique) var id: UUID
+    var merchant: String
+    var amountMinor: Int64
+    var categoryID: String
+    var accountID: UUID?
+    var dayOfMonth: Int
+    var isEnabled: Bool
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        merchant: String,
+        amountMinor: Int64,
+        categoryID: String,
+        accountID: UUID? = nil,
+        dayOfMonth: Int,
+        isEnabled: Bool = true,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.merchant = merchant
+        self.amountMinor = amountMinor
+        self.categoryID = categoryID
+        self.accountID = accountID
+        self.dayOfMonth = min(28, max(1, dayOfMonth))
+        self.isEnabled = isEnabled
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}

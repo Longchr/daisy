@@ -19,12 +19,14 @@ struct TransactionsView: View {
         transactions.filter { transaction in
             let matchesKind = selectedKind == nil || transaction.kind == selectedKind
             let matchesDate = appState.transactionDateFilter?.contains(transaction.occurredAt) ?? true
+            let matchesCategory = appState.transactionCategoryID == nil
+                || transaction.categoryID == appState.transactionCategoryID
             let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             let matchesQuery = query.isEmpty
                 || transaction.merchant.localizedCaseInsensitiveContains(query)
                 || (categoryMap[transaction.categoryID]?.name.localizedCaseInsensitiveContains(query) ?? false)
                 || transaction.note.localizedCaseInsensitiveContains(query)
-            return matchesKind && matchesDate && matchesQuery
+            return matchesKind && matchesDate && matchesCategory && matchesQuery
         }
     }
 
@@ -57,6 +59,7 @@ struct TransactionsView: View {
                             searchText = ""
                             selectedKind = nil
                             appState.transactionDateFilter = nil
+                            appState.transactionCategoryID = nil
                         }
                         .buttonStyle(.bordered)
                     }
@@ -127,7 +130,7 @@ struct TransactionsView: View {
 
     @ViewBuilder
     private var activeFilterBar: some View {
-        if appState.transactionDateFilter != nil || selectedKind != nil {
+        if appState.transactionDateFilter != nil || appState.transactionCategoryID != nil || selectedKind != nil {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
                     if let dateFilter = appState.transactionDateFilter {
@@ -139,7 +142,22 @@ struct TransactionsView: View {
                             appState.transactionDateFilter = nil
                         }
                     }
-                    if appState.transactionDateFilter != nil && selectedKind != nil {
+                    if appState.transactionDateFilter != nil
+                        && (appState.transactionCategoryID != nil || selectedKind != nil) {
+                        Divider()
+                            .frame(height: 22)
+                            .padding(.horizontal, 4)
+                    }
+                    if let categoryID = appState.transactionCategoryID {
+                        filterControl(
+                            title: categoryMap[categoryID]?.name ?? "分类",
+                            symbol: categoryMap[categoryID]?.symbol ?? "tag.fill",
+                            accessibilityLabel: "清除分类筛选"
+                        ) {
+                            appState.transactionCategoryID = nil
+                        }
+                    }
+                    if appState.transactionCategoryID != nil && selectedKind != nil {
                         Divider()
                             .frame(height: 22)
                             .padding(.horizontal, 4)
@@ -171,7 +189,7 @@ struct TransactionsView: View {
             Label(title, systemImage: symbol)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
-                .accessibilityIdentifier(symbol == "calendar" ? "activeDateFilter" : "activeKindFilter")
+                .accessibilityIdentifier(filterIdentifier(for: accessibilityLabel))
             Button {
                 withAnimation(.snappy) { clear() }
             } label: {
@@ -180,6 +198,14 @@ struct TransactionsView: View {
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel(accessibilityLabel)
+        }
+    }
+
+    private func filterIdentifier(for accessibilityLabel: String) -> String {
+        switch accessibilityLabel {
+        case "清除日期筛选": "activeDateFilter"
+        case "清除分类筛选": "activeCategoryFilter"
+        default: "activeKindFilter"
         }
     }
 

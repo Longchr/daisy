@@ -131,6 +131,40 @@ final class DaisyUITests: XCTestCase {
         XCTAssertEqual(copiedRows.count, 2)
     }
 
+    func testAnalyticsCategoryOpensFilteredTransactions() {
+        createManualTransaction(amount: "48.50", merchant: "分析测试账单")
+        app.tabBars.buttons["分析"].tap()
+        XCTAssertTrue(app.staticTexts["支出变化"].waitForExistence(timeout: 5))
+
+        let category = app.buttons["categoryRanking.expense.food"]
+        XCTAssertTrue(category.waitForExistence(timeout: 3))
+        category.tap()
+
+        XCTAssertTrue(app.tabBars.buttons["账单"].isSelected)
+        XCTAssertTrue(app.descendants(matching: .any)["activeCategoryFilter"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["分析测试账单"].exists)
+    }
+
+    func testDisabledRecurringReminderCanBeSavedWithoutPermissionPrompt() {
+        app.tabBars.buttons["设置"].tap()
+        app.staticTexts["周期提醒"].tap()
+        let addButton = app.buttons["addRecurringReminderButton"]
+        XCTAssertTrue(addButton.waitForExistence(timeout: 3))
+        addButton.tap()
+
+        app.textFields["recurringMerchantField"].typeText("视频订阅")
+        app.textFields["recurringAmountField"].tap()
+        app.textFields["recurringAmountField"].typeText("25.00")
+        app.switches["启用提醒"].tap()
+        app.buttons["saveRecurringReminderButton"].tap()
+
+        XCTAssertTrue(app.staticTexts["视频订阅"].waitForExistence(timeout: 5))
+        let schedule = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "每月")
+        ).firstMatch
+        XCTAssertTrue(schedule.exists)
+    }
+
     func testAISettingsExposeDirectConnectionFields() {
         app.tabBars.buttons["设置"].tap()
         app.staticTexts["AI 识别服务"].tap()

@@ -147,6 +147,22 @@ final class AppDatabaseTests: XCTestCase {
         })
     }
 
+    func testManualExpenseIntentStorageUsesSafeDefaults() throws {
+        let database = AppDatabase(inMemory: true)
+
+        let saved = try database.saveManualExpense(amountMinor: 1_680, merchant: "快捷记账测试")
+        let transactions = try database.container.mainContext.fetch(
+            FetchDescriptor<LedgerTransaction>()
+        )
+
+        XCTAssertEqual(saved.merchant, "快捷记账测试")
+        XCTAssertEqual(saved.amountMinor, 1_680)
+        XCTAssertEqual(transactions.count, 1)
+        XCTAssertEqual(transactions[0].kind, .expense)
+        XCTAssertFalse(transactions[0].categoryID.isEmpty)
+        XCTAssertNotNil(transactions[0].accountID)
+    }
+
     private func makeRecognition(
         occurredAt: Date = Date(),
         paymentChannel: String? = "alipay"

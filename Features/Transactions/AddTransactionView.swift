@@ -12,6 +12,7 @@ struct AddTransactionView: View {
 
     private let transaction: LedgerTransaction?
     private let isCopying: Bool
+    private let isRecurringConfirmation: Bool
 
     @AppStorage("daisy.lastAccountID") private var lastAccountID = ""
     @AppStorage("daisy.lastCategory.expense") private var lastExpenseCategoryID = ""
@@ -37,6 +38,7 @@ struct AddTransactionView: View {
     init(transaction: LedgerTransaction? = nil) {
         self.transaction = transaction
         isCopying = false
+        isRecurringConfirmation = false
         _kind = State(initialValue: transaction?.kind ?? .expense)
         _amountText = State(initialValue: transaction.map(Self.amountText(for:)) ?? "")
         _merchant = State(initialValue: transaction?.merchant ?? "")
@@ -50,6 +52,7 @@ struct AddTransactionView: View {
     init(copying source: LedgerTransaction) {
         transaction = nil
         isCopying = true
+        isRecurringConfirmation = false
         _kind = State(initialValue: source.kind)
         _amountText = State(initialValue: Self.amountText(for: source))
         _merchant = State(initialValue: source.merchant)
@@ -60,11 +63,28 @@ struct AddTransactionView: View {
         _note = State(initialValue: source.note)
     }
 
+    init(reminder: RecurringReminder) {
+        transaction = nil
+        isCopying = false
+        isRecurringConfirmation = true
+        _kind = State(initialValue: .expense)
+        _amountText = State(initialValue: NSDecimalNumber(
+            decimal: Money(minorUnits: reminder.amountMinor).decimalValue
+        ).stringValue)
+        _merchant = State(initialValue: reminder.merchant)
+        _selectedCategoryID = State(initialValue: reminder.categoryID)
+        _selectedAccountID = State(initialValue: reminder.accountID)
+        _selectedDestinationAccountID = State(initialValue: nil)
+        _occurredAt = State(initialValue: Date())
+        _note = State(initialValue: "")
+    }
+
     private var isEditing: Bool { transaction != nil }
 
     private var navigationTitle: String {
         if isEditing { return "编辑账单" }
         if isCopying { return "复制账单" }
+        if isRecurringConfirmation { return "确认周期账单" }
         return "记一笔"
     }
 
@@ -306,6 +326,8 @@ struct AddTransactionView: View {
                 appState.presentToast("账单已更新")
             } else if isCopying {
                 appState.presentToast("账单已复制")
+            } else if isRecurringConfirmation {
+                appState.presentToast("周期账单已确认")
             } else {
                 appState.presentToast("已记下 \(money.formatted())")
             }

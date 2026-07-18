@@ -4,6 +4,7 @@ import UIKit
 
 @main
 struct DaisyApp: App {
+    @UIApplicationDelegateAdaptor(DaisyAppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
     @StateObject private var settings = AppSettings.shared
     @StateObject private var appLock = AppLockController(

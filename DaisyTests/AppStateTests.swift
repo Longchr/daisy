@@ -25,11 +25,12 @@ final class AppStateTests: XCTestCase {
         let appState = AppState()
         let selectedDate = Date(timeIntervalSince1970: 1_700_000_000)
 
-        appState.showTransactions(.day(selectedDate))
+        appState.showTransactions(.day(selectedDate), categoryID: "expense.food")
 
         XCTAssertEqual(appState.selectedTab, .transactions)
         XCTAssertTrue(appState.transactionDateFilter?.contains(selectedDate) == true)
         XCTAssertFalse(appState.transactionDateFilter?.contains(selectedDate.addingTimeInterval(86_400)) == true)
+        XCTAssertEqual(appState.transactionCategoryID, "expense.food")
     }
 
     func testBudgetDrillDownSelectsSettingsDestination() {

@@ -87,6 +87,9 @@ struct SettingsView: View {
                     } label: {
                         Label("分类", systemImage: "square.grid.2x2.fill")
                     }
+                    NavigationLink(value: AppState.SettingsDestination.recurringReminders) {
+                        Label("周期提醒", systemImage: "calendar.badge.clock")
+                    }
                 }
 
                 Section {
@@ -152,6 +155,8 @@ struct SettingsView: View {
                     BudgetSettingsView(month: month)
                 case .recognitionRecords:
                     PendingRecognitionsView()
+                case .recurringReminders:
+                    RecurringRemindersView()
                 }
             }
         }

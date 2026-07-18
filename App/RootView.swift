@@ -1,11 +1,14 @@
 import SwiftUI
+import SwiftData
 
 struct RootView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appLock: AppLockController
+    @Query private var recurringReminders: [RecurringReminder]
     @AppStorage(OnboardingState.completedKey) private var onboardingCompleted = false
     @State private var forcedOnboardingDismissed = false
+    @State private var recurringReminderToConfirm: RecurringReminder?
 
     private var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains("--ui-testing")
@@ -71,6 +74,9 @@ struct RootView: View {
         .sheet(isPresented: $appState.isPresentingRecognitionImport) {
             RecognitionImportView()
         }
+        .sheet(item: $recurringReminderToConfirm) { reminder in
+            AddTransactionView(reminder: reminder)
+        }
         .fullScreenCover(isPresented: isPresentingOnboarding) {
             OnboardingView { openSettings in
                 onboardingCompleted = true
@@ -78,6 +84,30 @@ struct RootView: View {
                 appState.selectedTab = openSettings ? .settings : .dashboard
             }
         }
+        .onAppear(perform: openPendingRecurringReminder)
+        .onReceive(NotificationCenter.default.publisher(for: .openRecurringReminder)) { notification in
+            guard let reminderID = notification.object as? String else { return }
+            openRecurringReminder(idString: reminderID)
+        }
+    }
+
+    private func openPendingRecurringReminder() {
+        let defaults = UserDefaults.standard
+        guard let reminderID = defaults.string(
+            forKey: RecurringReminderNotification.pendingReminderDefaultsKey
+        ) else { return }
+        openRecurringReminder(idString: reminderID)
+    }
+
+    private func openRecurringReminder(idString: String) {
+        defer {
+            UserDefaults.standard.removeObject(
+                forKey: RecurringReminderNotification.pendingReminderDefaultsKey
+            )
+        }
+        guard let reminderID = UUID(uuidString: idString),
+              let reminder = recurringReminders.first(where: { $0.id == reminderID }) else { return }
+        recurringReminderToConfirm = reminder
     }
 }
 

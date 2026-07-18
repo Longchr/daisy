@@ -18,6 +18,7 @@ final class AppDatabase {
                 LedgerCategory.self,
                 RecognitionDraft.self,
                 MonthlyBudget.self,
+                RecurringReminder.self,
                 configurations: configuration
             )
         } catch {
@@ -42,6 +43,32 @@ final class AppDatabase {
         )
         let categories = (try? context.fetch(descriptor)) ?? []
         return categories.map { (id: $0.id, name: $0.name, kind: $0.kind) }
+    }
+
+    func saveManualExpense(amountMinor: Int64, merchant: String) throws -> SavedTransaction {
+        guard amountMinor > 0 else { throw ManualTransactionError.invalidAmount }
+        let context = container.mainContext
+        seedDefaults(in: context)
+        let categories = try context.fetch(FetchDescriptor<LedgerCategory>(
+            sortBy: [SortDescriptor(\.sortOrder)]
+        ))
+        guard let category = categories.first(where: { $0.kind == .expense }) else {
+            throw ManualTransactionError.missingExpenseCategory
+        }
+        let accounts = try context.fetch(FetchDescriptor<Account>(
+            sortBy: [SortDescriptor(\.sortOrder)]
+        ))
+        let normalizedMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let transaction = LedgerTransaction(
+            kind: .expense,
+            amountMinor: amountMinor,
+            merchant: normalizedMerchant.isEmpty ? category.name : normalizedMerchant,
+            categoryID: category.id,
+            accountID: accounts.first(where: { !$0.isArchived })?.id
+        )
+        context.insert(transaction)
+        try context.save()
+        return SavedTransaction(transaction)
     }
 
     func saveRecognition(
@@ -210,4 +237,9 @@ final class AppDatabase {
         }
         try? context.save()
     }
+}
+
+enum ManualTransactionError: Error {
+    case invalidAmount
+    case missingExpenseCategory
 }
