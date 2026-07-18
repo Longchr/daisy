@@ -87,12 +87,13 @@ final class AppDatabase {
         errorCode: String? = nil
     ) throws -> UUID {
         let context = container.mainContext
+        let storedData = try recognition.map { try JSONEncoder().encode($0) } ?? rawData
         let drafts = (try? context.fetch(FetchDescriptor<RecognitionDraft>())) ?? []
         if let existing = drafts.first(where: { $0.idempotencyKey == idempotencyKey }) {
             existing.statusRaw = recognition == nil
                 ? RecognitionDraftStatus.failed.rawValue
                 : RecognitionDraftStatus.needsReview.rawValue
-            existing.transactionJSON = rawData
+            existing.transactionJSON = storedData
             existing.overallConfidence = recognition?.confidence
             existing.errorCode = errorCode
             existing.updatedAt = Date()
@@ -102,7 +103,7 @@ final class AppDatabase {
 
         let draft = RecognitionDraft(
             status: recognition == nil ? .failed : .needsReview,
-            transactionJSON: rawData,
+            transactionJSON: storedData,
             overallConfidence: recognition?.confidence,
             errorCode: errorCode,
             idempotencyKey: idempotencyKey

@@ -90,10 +90,10 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("识别安全") {
+                Section {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("自动入账置信度")
+                            Text("自动入账最低置信度")
                             Spacer()
                             Text(settings.autoSaveThreshold.formatted(.percent.precision(.fractionLength(0))))
                                 .foregroundStyle(.secondary)
@@ -103,8 +103,12 @@ struct SettingsView: View {
                             .tint(DaisyTheme.accent)
                     }
                     Stepper(value: $settings.highValueThresholdMinor, in: 10_000...500_000, step: 10_000) {
-                        LabeledContent("大额确认", value: Money(minorUnits: settings.highValueThresholdMinor).formatted())
+                        LabeledContent("大额确认阈值", value: Money(minorUnits: settings.highValueThresholdMinor).formatted())
                     }
+                } header: {
+                    Text("识别安全")
+                } footer: {
+                    Text("普通账单达到最低置信度后会直接入账；金额冲突、字段纠正、大额账单和转账仍需确认。")
                 }
 
                 Section("数据") {

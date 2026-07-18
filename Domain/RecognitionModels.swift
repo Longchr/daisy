@@ -63,7 +63,7 @@ struct RecognitionPayload: Codable, Equatable, Sendable {
     let warnings: [String]?
 }
 
-struct ValidatedRecognition: Equatable, Sendable {
+struct ValidatedRecognition: Codable, Equatable, Sendable {
     let kind: TransactionKind
     let amountMinor: Int64
     let currencyCode: String

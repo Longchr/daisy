@@ -66,7 +66,7 @@ struct OnboardingView: View {
             tint: DaisyTheme.income,
             eyebrow: "准备就绪",
             title: "先配置，再自动入账",
-            message: "前往设置填写 Base URL、API Key 并获取模型。只有内置视觉测试通过后，Daisy 才允许可信结果自动入账。",
+            message: "前往设置填写 Base URL、API Key 并获取模型。普通账单达到你设置的置信度后，Daisy 会直接入账。",
             points: [
                 ("1.circle.fill", "设置 AI 识别服务"),
                 ("2.circle.fill", "创建付款后记账快捷指令"),

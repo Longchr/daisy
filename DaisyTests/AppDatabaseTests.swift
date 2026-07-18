@@ -77,9 +77,10 @@ final class AppDatabaseTests: XCTestCase {
             errorCode: "timeout"
         )
         let payloadData = Data("{\"transaction\":{}}".utf8)
+        let recognition = makeRecognition()
 
         _ = try database.createDraft(
-            recognition: makeRecognition(),
+            recognition: recognition,
             rawData: payloadData,
             idempotencyKey: fingerprint
         )
@@ -87,7 +88,10 @@ final class AppDatabaseTests: XCTestCase {
         let drafts = try database.container.mainContext.fetch(FetchDescriptor<RecognitionDraft>())
         XCTAssertEqual(drafts.count, 1)
         XCTAssertEqual(drafts[0].statusRaw, RecognitionDraftStatus.needsReview.rawValue)
-        XCTAssertEqual(drafts[0].transactionJSON, payloadData)
+        let storedData = try XCTUnwrap(drafts[0].transactionJSON)
+        let storedRecognition = try JSONDecoder().decode(ValidatedRecognition.self, from: storedData)
+        XCTAssertEqual(storedRecognition, recognition)
+        XCTAssertNotEqual(storedData, payloadData)
         XCTAssertNil(drafts[0].errorCode)
     }
 

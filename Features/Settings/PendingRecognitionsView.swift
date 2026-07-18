@@ -73,8 +73,11 @@ struct PendingRecognitionsView: View {
     }
 
     private func decode(_ draft: RecognitionDraft) -> ValidatedRecognition? {
-        guard let data = draft.transactionJSON,
-              let payload = try? JSONDecoder().decode(RecognitionPayload.self, from: data) else { return nil }
+        guard let data = draft.transactionJSON else { return nil }
+        if let recognition = try? JSONDecoder().decode(ValidatedRecognition.self, from: data) {
+            return recognition
+        }
+        guard let payload = try? JSONDecoder().decode(RecognitionPayload.self, from: data) else { return nil }
         return try? RecognitionValidator.validate(
             payload,
             ocrText: "",

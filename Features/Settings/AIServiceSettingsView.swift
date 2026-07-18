@@ -129,7 +129,7 @@ struct AIServiceSettingsView: View {
             } header: {
                 Text("验证")
             } footer: {
-                Text("Daisy 会发送一张内置的虚拟付款图。未通过测试的模型，真实识别结果只能进入待确认，不能自动入账。")
+                Text("Daisy 会发送一张内置的虚拟付款图，帮助检查模型能否读取截图。测试状态不会改变自动入账阈值。")
             }
 
             Section {

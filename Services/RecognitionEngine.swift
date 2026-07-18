@@ -33,21 +33,14 @@ actor RecognitionEngine {
             apiKey: AIConfigurationStore.apiKey()
         )
 
-        let defaults = UserDefaults.standard
-        let threshold = defaults.object(forKey: "recognition.autoSaveThreshold") as? Double ?? 0.90
-        let highValue = defaults.object(forKey: "recognition.highValueThreshold") == nil
-            ? 50_000
-            : Int64(defaults.integer(forKey: "recognition.highValueThreshold"))
+        let policy = RecognitionSafetyPolicy.load()
         let recognition = try RecognitionValidator.validate(
             response.payload,
             ocrText: ocrText,
             allowedCategoryIDs: Set(categories.map { $0.id }),
             categoryKinds: Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0.kind) }),
-            autoSaveThreshold: threshold,
-            highValueThresholdMinor: highValue,
-            forcedReviewWarnings: configuration.visionVerified
-                ? []
-                : ["当前模型尚未通过 Daisy 视觉测试"]
+            autoSaveThreshold: policy.autoSaveThreshold,
+            highValueThresholdMinor: policy.highValueThresholdMinor
         )
 
         return Outcome(recognition: recognition, rawJSON: response.rawJSON, idempotencyKey: idempotencyKey)

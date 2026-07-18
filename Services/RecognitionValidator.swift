@@ -8,7 +8,6 @@ enum RecognitionValidator {
         categoryKinds: [String: TransactionKind] = [:],
         autoSaveThreshold: Double,
         highValueThresholdMinor: Int64,
-        forcedReviewWarnings: [String] = [],
         now: Date = Date()
     ) throws -> ValidatedRecognition {
         let source = payload.transaction
@@ -21,37 +20,64 @@ enum RecognitionValidator {
         }
         let exponent = source.currencyExponent ?? (currency == "JPY" ? 0 : 2)
         guard (0...4).contains(exponent) else { throw RecognitionError.invalidResponse }
-        let merchant = sanitize(source.merchant, fallback: "未识别商户", maxLength: 80)
 
-        var warnings = (payload.warnings ?? []) + forcedReviewWarnings
+        var warnings = payload.warnings ?? []
+        var requiresReview = false
+
+        let rawMerchant = source.merchant?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let merchant = sanitize(rawMerchant, fallback: "未识别商户", maxLength: 80)
+        if rawMerchant.isEmpty {
+            warnings.append("未识别到商户，已使用默认名称")
+            requiresReview = true
+        }
+
         var categoryID = source.categoryID ?? defaultCategory(for: kind)
         let categoryKind = categoryKinds[categoryID]
         let kindMatches = categoryKind == nil
             || categoryKind == kind
             || (kind == .refund && categoryKind == .income)
-        if !allowedCategoryIDs.contains(categoryID) || !kindMatches {
+        if source.categoryID == nil || !allowedCategoryIDs.contains(categoryID) || !kindMatches {
             categoryID = defaultCategory(for: kind)
             warnings.append("模型返回的分类无效，已使用默认分类")
+            requiresReview = true
         }
 
-        let occurredAt = parseDate(source.occurredAt) ?? now
+        let parsedDate = parseDate(source.occurredAt)
+        let occurredAt = parsedDate ?? now
+        if let rawDate = source.occurredAt,
+           !rawDate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           parsedDate == nil {
+            warnings.append("交易时间格式无效，已使用当前时间")
+            requiresReview = true
+        }
         if occurredAt > now.addingTimeInterval(300) {
             warnings.append("交易时间晚于当前时间")
+            requiresReview = true
         }
         if occurredAt < now.addingTimeInterval(-366 * 24 * 3600) {
             warnings.append("交易时间距今超过一年")
+            requiresReview = true
         }
 
         let confidence = min(1, max(0, payload.confidence?.overall ?? 0.5))
         let ocrAmounts = OCRAmountExtractor.amountsMinor(in: ocrText)
         if !ocrAmounts.isEmpty && !ocrAmounts.contains(amount) {
             warnings.append("模型金额与本地 OCR 候选不一致")
+            requiresReview = true
         }
 
-        let needsReview = confidence < autoSaveThreshold
-            || amount >= highValueThresholdMinor
-            || !warnings.isEmpty
-            || kind == .transfer
+        if confidence < autoSaveThreshold {
+            warnings.append("置信度低于自动入账阈值")
+            requiresReview = true
+        }
+        if amount >= highValueThresholdMinor {
+            warnings.append("金额达到大额确认阈值")
+            requiresReview = true
+        }
+        if kind == .transfer {
+            warnings.append("转账需要确认转出与转入账户")
+            requiresReview = true
+        }
 
         return ValidatedRecognition(
             kind: kind,
@@ -66,7 +92,7 @@ enum RecognitionValidator {
             orderIDHint: source.orderIDHint,
             note: source.note,
             confidence: confidence,
-            needsReview: needsReview,
+            needsReview: requiresReview,
             warnings: warnings
         )
     }
