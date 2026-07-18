@@ -199,6 +199,8 @@ struct TransactionsView: View {
             }
             .accessibilityLabel(accessibilityLabel)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(filterIdentifier(for: accessibilityLabel))
     }
 
     private func filterIdentifier(for accessibilityLabel: String) -> String {
