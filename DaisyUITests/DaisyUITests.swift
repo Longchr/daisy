@@ -135,10 +135,12 @@ final class DaisyUITests: XCTestCase {
         createManualTransaction(amount: "48.50", merchant: "分析测试账单")
         app.tabBars.buttons["分析"].tap()
         XCTAssertTrue(app.staticTexts["支出变化"].waitForExistence(timeout: 5))
+        app.swipeUp()
 
         let category = app.buttons["categoryRanking.expense.food"]
         XCTAssertTrue(category.waitForExistence(timeout: 3))
-        category.tap()
+        XCTAssertTrue(category.isHittable)
+        tapReliably(category)
 
         XCTAssertTrue(app.navigationBars["账单"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.tabBars.buttons["账单"].isSelected)
