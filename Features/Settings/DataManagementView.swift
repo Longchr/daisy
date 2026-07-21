@@ -19,6 +19,19 @@ struct DataManagementView: View {
     @State private var isImporting = false
     @State private var showDeleteConfirmation = false
 
+    private var exportRevision: [Int] {
+        [
+            transactions.count,
+            accounts.count,
+            categories.count,
+            budgets.count,
+            recurringReminders.count,
+            assets.count,
+            assetValuations.count,
+            balanceAdjustments.count
+        ]
+    }
+
     var body: some View {
         List {
             Section("导出") {
@@ -65,14 +78,7 @@ struct DataManagementView: View {
         .navigationTitle("数据管理")
         .navigationBarTitleDisplayMode(.inline)
         .task { prepareExports() }
-        .onChange(of: transactions.count) { _, _ in prepareExports() }
-        .onChange(of: accounts.count) { _, _ in prepareExports() }
-        .onChange(of: categories.count) { _, _ in prepareExports() }
-        .onChange(of: budgets.count) { _, _ in prepareExports() }
-        .onChange(of: recurringReminders.count) { _, _ in prepareExports() }
-        .onChange(of: assets.count) { _, _ in prepareExports() }
-        .onChange(of: assetValuations.count) { _, _ in prepareExports() }
-        .onChange(of: balanceAdjustments.count) { _, _ in prepareExports() }
+        .onChange(of: exportRevision) { _, _ in prepareExports() }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.json]) { result in
             importBackup(result)
         }
