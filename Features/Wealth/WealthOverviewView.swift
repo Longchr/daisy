@@ -128,7 +128,7 @@ struct WealthOverviewView: View {
             }
 
             if !archivedAccounts.isEmpty || !archivedHoldings.isEmpty {
-                Section("已归档") {
+                Section {
                     ForEach(archivedAccounts) { account in
                         NavigationLink {
                             AccountWealthDetailView(account: account)
@@ -148,6 +148,8 @@ struct WealthOverviewView: View {
                             WealthHoldingRow(asset: asset, hideAmount: settings.hideAmounts)
                         }
                     }
+                } header: {
+                    Text("已归档")
                 } footer: {
                     Text("归档项目不会计入当前资产汇总，但历史账单和估值记录仍会保留。")
                 }
