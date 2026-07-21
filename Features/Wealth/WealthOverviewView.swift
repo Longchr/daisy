@@ -79,7 +79,7 @@ struct WealthOverviewView: View {
                 }
             }
 
-            Section("金融账户") {
+            Section {
                 if financialAccounts.isEmpty {
                     Text("还没有金融账户")
                         .foregroundStyle(.secondary)
@@ -97,6 +97,8 @@ struct WealthOverviewView: View {
                         }
                     }
                 }
+            } header: {
+                Text("金融账户")
             } footer: {
                 Text("账户余额由期初余额、账单、转账和余额校准共同计算。")
             }
