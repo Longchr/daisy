@@ -19,6 +19,9 @@ final class AppDatabase {
                 RecognitionDraft.self,
                 MonthlyBudget.self,
                 RecurringReminder.self,
+                AssetHolding.self,
+                AssetValuation.self,
+                AccountBalanceAdjustment.self,
                 configurations: configuration
             )
         } catch {

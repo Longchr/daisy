@@ -61,7 +61,7 @@ final class ExportServiceTests: XCTestCase {
         )
         let backup = try ExportService.decodeBackup(Data(contentsOf: url))
 
-        XCTAssertEqual(backup.schemaVersion, 2)
+        XCTAssertEqual(backup.schemaVersion, ExportService.currentSchemaVersion)
         XCTAssertEqual(backup.recurringReminders.count, 1)
         XCTAssertEqual(backup.recurringReminders[0].merchant, "视频订阅")
         XCTAssertEqual(backup.recurringReminders[0].dayOfMonth, 18)
@@ -81,6 +81,127 @@ final class ExportServiceTests: XCTestCase {
         let legacyData = try JSONSerialization.data(withJSONObject: object)
 
         XCTAssertTrue(try ExportService.decodeBackup(legacyData).recurringReminders.isEmpty)
+    }
+
+    func testVersionTwoBackupWithoutWealthFieldsStillDecodes() throws {
+        let account = Account(
+            name: "旧银行卡",
+            type: .bank,
+            symbol: "building.columns.fill"
+        )
+        let backup = DaisyBackup(
+            schemaVersion: 2,
+            createdAt: Date(),
+            transactions: [],
+            accounts: [AccountExportRecord(account)],
+            categories: [],
+            budgets: []
+        )
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: try encode(backup)) as? [String: Any])
+        object.removeValue(forKey: "assets")
+        object.removeValue(forKey: "assetValuations")
+        object.removeValue(forKey: "balanceAdjustments")
+        var accountObject = try XCTUnwrap((object["accounts"] as? [[String: Any]])?.first)
+        accountObject.removeValue(forKey: "wealthBucket")
+        accountObject.removeValue(forKey: "includeInNetWorth")
+        accountObject.removeValue(forKey: "createdAt")
+        accountObject.removeValue(forKey: "updatedAt")
+        object["accounts"] = [accountObject]
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try ExportService.decodeBackup(legacyData)
+        XCTAssertEqual(decoded.accounts.count, 1)
+        XCTAssertNil(decoded.accounts[0].wealthBucket)
+        XCTAssertNil(decoded.accounts[0].includeInNetWorth)
+        XCTAssertTrue(decoded.assets.isEmpty)
+        XCTAssertTrue(decoded.assetValuations.isEmpty)
+        XCTAssertTrue(decoded.balanceAdjustments.isEmpty)
+    }
+
+    func testJSONRoundTripPreservesWealthRecordsAndExclusions() throws {
+        let createdAt = Date(timeIntervalSince1970: 1_768_003_200)
+        let account = Account(
+            name: "基金账户",
+            type: .investment,
+            symbol: "chart.line.uptrend.xyaxis",
+            openingBalanceMinor: 50_000,
+            wealthBucket: .investment,
+            includeInNetWorth: false,
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+        let asset = AssetHolding(
+            name: "自住房",
+            kind: .realEstate,
+            currentValueMinor: 8_000_000,
+            costMinor: 6_500_000,
+            institution: "上海",
+            note: "手动估值",
+            valuationDate: createdAt,
+            includeInNetWorth: false,
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+        let valuation = AssetValuation(
+            assetID: asset.id,
+            valueMinor: asset.currentValueMinor,
+            recordedAt: createdAt,
+            note: "首次记录"
+        )
+        let adjustment = AccountBalanceAdjustment(
+            accountID: account.id,
+            deltaMinor: -1_200,
+            occurredAt: createdAt,
+            note: "余额校准"
+        )
+
+        let url = try ExportService.makeJSONFile(
+            transactions: [],
+            accounts: [account],
+            categories: [],
+            budgets: [],
+            assets: [asset],
+            assetValuations: [valuation],
+            balanceAdjustments: [adjustment]
+        )
+        let decoded = try ExportService.decodeBackup(Data(contentsOf: url))
+
+        XCTAssertEqual(decoded.schemaVersion, ExportService.currentSchemaVersion)
+        XCTAssertEqual(decoded.accounts[0].wealthBucket, WealthBucket.investment.rawValue)
+        XCTAssertEqual(decoded.accounts[0].includeInNetWorth, false)
+        XCTAssertEqual(decoded.accounts[0].createdAt, createdAt)
+        XCTAssertEqual(decoded.assets[0].id, asset.id)
+        XCTAssertEqual(decoded.assets[0].costMinor, 6_500_000)
+        XCTAssertEqual(decoded.assets[0].includeInNetWorth, false)
+        XCTAssertEqual(decoded.assetValuations[0].assetID, asset.id)
+        XCTAssertEqual(decoded.balanceAdjustments[0].accountID, account.id)
+        XCTAssertEqual(decoded.balanceAdjustments[0].deltaMinor, -1_200)
+    }
+
+    func testRejectsOrphanedWealthHistory() throws {
+        let asset = AssetHolding(
+            name: "房产",
+            kind: .realEstate,
+            currentValueMinor: 1_000_000
+        )
+        let orphanedValuation = AssetValuation(
+            assetID: UUID(),
+            valueMinor: 1_000_000
+        )
+        let backup = DaisyBackup(
+            schemaVersion: ExportService.currentSchemaVersion,
+            createdAt: Date(),
+            transactions: [],
+            accounts: [],
+            categories: [],
+            budgets: [],
+            assets: [AssetHoldingExportRecord(asset)],
+            assetValuations: [AssetValuationExportRecord(orphanedValuation)]
+        )
+
+        XCTAssertThrowsError(try ExportService.decodeBackup(try encode(backup))) { error in
+            XCTAssertEqual(error as? ExportService.BackupError, .invalidRecord)
+        }
     }
 
     func testRejectsBackupFromFutureSchemaVersion() throws {

@@ -90,4 +90,27 @@ final class AccountBalanceCalculatorTests: XCTestCase {
             1_000
         )
     }
+
+    func testBalanceIncludesExplicitAdjustmentsWithoutChangingTransactions() {
+        let account = Account(
+            name: "银行卡",
+            type: .bank,
+            symbol: "building.columns.fill",
+            openingBalanceMinor: 1_000
+        )
+        let adjustment = AccountBalanceAdjustment(
+            accountID: account.id,
+            deltaMinor: 250,
+            note: "余额校准"
+        )
+
+        XCTAssertEqual(
+            AccountBalanceCalculator.balanceMinor(
+                for: account,
+                transactions: [],
+                adjustments: [adjustment]
+            ),
+            1_250
+        )
+    }
 }

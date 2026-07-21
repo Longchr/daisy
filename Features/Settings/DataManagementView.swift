@@ -10,6 +10,9 @@ struct DataManagementView: View {
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
     @Query(sort: \MonthlyBudget.monthStart, order: .reverse) private var budgets: [MonthlyBudget]
     @Query(sort: \RecurringReminder.dayOfMonth) private var recurringReminders: [RecurringReminder]
+    @Query(sort: \AssetHolding.sortOrder) private var assets: [AssetHolding]
+    @Query(sort: \AssetValuation.recordedAt, order: .reverse) private var assetValuations: [AssetValuation]
+    @Query(sort: \AccountBalanceAdjustment.occurredAt, order: .reverse) private var balanceAdjustments: [AccountBalanceAdjustment]
 
     @State private var csvURL: URL?
     @State private var jsonURL: URL?
@@ -52,6 +55,8 @@ struct DataManagementView: View {
 
             Section {
                 LabeledContent("账单数量", value: "\(transactions.count)")
+                LabeledContent("金融账户", value: "\(accounts.count)")
+                LabeledContent("资产与负债", value: "\(assets.count)")
                 Button("删除全部账单", role: .destructive) {
                     showDeleteConfirmation = true
                 }
@@ -61,7 +66,13 @@ struct DataManagementView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { prepareExports() }
         .onChange(of: transactions.count) { _, _ in prepareExports() }
+        .onChange(of: accounts.count) { _, _ in prepareExports() }
+        .onChange(of: categories.count) { _, _ in prepareExports() }
+        .onChange(of: budgets.count) { _, _ in prepareExports() }
         .onChange(of: recurringReminders.count) { _, _ in prepareExports() }
+        .onChange(of: assets.count) { _, _ in prepareExports() }
+        .onChange(of: assetValuations.count) { _, _ in prepareExports() }
+        .onChange(of: balanceAdjustments.count) { _, _ in prepareExports() }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.json]) { result in
             importBackup(result)
         }
@@ -80,7 +91,10 @@ struct DataManagementView: View {
             accounts: accounts,
             categories: categories,
             budgets: budgets,
-            recurringReminders: recurringReminders
+            recurringReminders: recurringReminders,
+            assets: assets,
+            assetValuations: assetValuations,
+            balanceAdjustments: balanceAdjustments
         )
     }
 
@@ -133,7 +147,11 @@ struct DataManagementView: View {
                     currencyCode: record.currencyCode,
                     openingBalanceMinor: record.openingBalanceMinor,
                     sortOrder: record.sortOrder,
-                    isArchived: record.isArchived
+                    isArchived: record.isArchived,
+                    wealthBucket: record.wealthBucket.flatMap(WealthBucket.init(rawValue:)),
+                    includeInNetWorth: record.includeInNetWorth ?? true,
+                    createdAt: record.createdAt ?? Date(),
+                    updatedAt: record.updatedAt ?? record.createdAt ?? Date()
                 ))
                 insertedRecords += 1
             }
@@ -190,10 +208,58 @@ struct DataManagementView: View {
                 restoredReminders.append(reminder)
                 insertedRecords += 1
             }
+
+            var existingAssetIDs = Set(assets.map(\.id))
+            for record in backup.assets where existingAssetIDs.insert(record.id).inserted {
+                guard let kind = AssetKind(rawValue: record.kind),
+                      let nature = WealthItemNature(rawValue: record.nature) else { continue }
+                modelContext.insert(AssetHolding(
+                    id: record.id,
+                    name: record.name,
+                    kind: kind,
+                    nature: nature,
+                    currentValueMinor: record.currentValueMinor,
+                    currencyCode: record.currencyCode,
+                    costMinor: record.costMinor,
+                    institution: record.institution,
+                    note: record.note,
+                    valuationDate: record.valuationDate,
+                    includeInNetWorth: record.includeInNetWorth,
+                    sortOrder: record.sortOrder,
+                    isArchived: record.isArchived,
+                    createdAt: record.createdAt,
+                    updatedAt: record.updatedAt
+                ))
+                insertedRecords += 1
+            }
+
+            var existingValuationIDs = Set(assetValuations.map(\.id))
+            for record in backup.assetValuations where existingValuationIDs.insert(record.id).inserted {
+                modelContext.insert(AssetValuation(
+                    id: record.id,
+                    assetID: record.assetID,
+                    valueMinor: record.valueMinor,
+                    recordedAt: record.recordedAt,
+                    note: record.note
+                ))
+                insertedRecords += 1
+            }
+
+            var existingAdjustmentIDs = Set(balanceAdjustments.map(\.id))
+            for record in backup.balanceAdjustments where existingAdjustmentIDs.insert(record.id).inserted {
+                modelContext.insert(AccountBalanceAdjustment(
+                    id: record.id,
+                    accountID: record.accountID,
+                    deltaMinor: record.deltaMinor,
+                    occurredAt: record.occurredAt,
+                    note: record.note
+                ))
+                insertedRecords += 1
+            }
             try modelContext.save()
             let message = insertedRecords == insertedTransactions
                 ? "已恢复 \(insertedTransactions) 笔账单"
-                : "已恢复 \(insertedTransactions) 笔账单及 \(insertedRecords - insertedTransactions) 项设置"
+                : "已恢复 \(insertedTransactions) 笔账单及 \(insertedRecords - insertedTransactions) 项数据"
             appState.presentToast(message)
             reschedule(restoredReminders)
         } catch {

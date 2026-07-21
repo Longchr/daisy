@@ -113,6 +113,31 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
     }
 
+    func testDashboardWealthReturnsToDashboard() {
+        let wealthCard = app.buttons["dashboardWealthCard"]
+        XCTAssertTrue(wealthCard.waitForExistence(timeout: 5))
+        tapReliably(wealthCard)
+
+        XCTAssertTrue(app.navigationBars["资产"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["总览"].isSelected)
+
+        app.navigationBars["资产"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Daisy"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["总览"].isSelected)
+    }
+
+    func testSettingsWealthReturnsToSettings() {
+        app.tabBars.buttons["设置"].tap()
+        app.staticTexts["账户与资产"].tap()
+
+        XCTAssertTrue(app.navigationBars["资产"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
+
+        app.navigationBars["资产"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
+    }
+
     func testMerchantSuggestionReusesRecentTransaction() {
         createManualTransaction(amount: "22.40", merchant: "历史商户")
 

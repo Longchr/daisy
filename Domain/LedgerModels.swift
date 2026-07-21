@@ -166,6 +166,10 @@ final class Account {
     var openingBalanceMinor: Int64
     var sortOrder: Int
     var isArchived: Bool
+    var wealthBucketRaw: String = ""
+    var includeInNetWorth: Bool = true
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
 
     init(
         id: UUID = UUID(),
@@ -175,7 +179,11 @@ final class Account {
         currencyCode: String = "CNY",
         openingBalanceMinor: Int64 = 0,
         sortOrder: Int = 0,
-        isArchived: Bool = false
+        isArchived: Bool = false,
+        wealthBucket: WealthBucket? = nil,
+        includeInNetWorth: Bool = true,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
     ) {
         self.id = id
         self.name = name
@@ -185,16 +193,29 @@ final class Account {
         self.openingBalanceMinor = openingBalanceMinor
         self.sortOrder = sortOrder
         self.isArchived = isArchived
+        self.wealthBucketRaw = (wealthBucket ?? type.defaultWealthBucket).rawValue
+        self.includeInNetWorth = includeInNetWorth
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 
     var type: AccountType { AccountType(rawValue: typeRaw) ?? .other }
+
+    var wealthBucket: WealthBucket {
+        get { WealthBucket(rawValue: wealthBucketRaw) ?? type.defaultWealthBucket }
+        set { wealthBucketRaw = newValue.rawValue }
+    }
 }
 
 enum AccountType: String, Codable, CaseIterable, Identifiable {
     case cash
     case bank
+    case savings
+    case termDeposit
     case creditCard
     case paymentChannel
+    case investment
+    case loan
     case other
 
     var id: String { rawValue }
@@ -203,10 +224,236 @@ enum AccountType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .cash: "现金"
         case .bank: "银行卡"
+        case .savings: "储蓄账户"
+        case .termDeposit: "定期存款"
         case .creditCard: "信用卡"
         case .paymentChannel: "支付账户"
+        case .investment: "投资账户"
+        case .loan: "贷款"
         case .other: "其他"
         }
+    }
+
+    var defaultWealthBucket: WealthBucket {
+        switch self {
+        case .cash: .cash
+        case .bank, .savings, .termDeposit: .deposit
+        case .paymentChannel: .payment
+        case .investment: .investment
+        case .creditCard, .loan: .liability
+        case .other: .other
+        }
+    }
+}
+
+enum WealthBucket: String, Codable, CaseIterable, Identifiable, Sendable {
+    case cash
+    case deposit
+    case payment
+    case investment
+    case liability
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .cash: "现金"
+        case .deposit: "银行存款"
+        case .payment: "支付余额"
+        case .investment: "投资资产"
+        case .liability: "负债账户"
+        case .other: "其他金融账户"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .cash: "banknote.fill"
+        case .deposit: "building.columns.fill"
+        case .payment: "wallet.pass.fill"
+        case .investment: "chart.line.uptrend.xyaxis"
+        case .liability: "creditcard.fill"
+        case .other: "circle.grid.2x2.fill"
+        }
+    }
+}
+
+enum WealthItemNature: String, Codable, CaseIterable, Identifiable, Sendable {
+    case asset
+    case liability
+
+    var id: String { rawValue }
+    var title: String { self == .asset ? "资产" : "负债" }
+}
+
+enum AssetKind: String, Codable, CaseIterable, Identifiable, Sendable {
+    case realEstate
+    case vehicle
+    case preciousMetal
+    case receivable
+    case insurance
+    case collectible
+    case mortgage
+    case vehicleLoan
+    case consumerLoan
+    case otherAsset
+    case otherLiability
+
+    var id: String { rawValue }
+
+    var nature: WealthItemNature {
+        switch self {
+        case .mortgage, .vehicleLoan, .consumerLoan, .otherLiability: .liability
+        default: .asset
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .realEstate: "房产"
+        case .vehicle: "车辆"
+        case .preciousMetal: "贵金属"
+        case .receivable: "应收款"
+        case .insurance: "保险现金价值"
+        case .collectible: "收藏品"
+        case .mortgage: "房贷"
+        case .vehicleLoan: "车贷"
+        case .consumerLoan: "消费贷"
+        case .otherAsset: "其他资产"
+        case .otherLiability: "其他负债"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .realEstate, .mortgage: "house.fill"
+        case .vehicle, .vehicleLoan: "car.fill"
+        case .preciousMetal: "seal.fill"
+        case .receivable: "person.crop.circle.badge.clock"
+        case .insurance: "shield.fill"
+        case .collectible: "archivebox.fill"
+        case .consumerLoan: "banknote.fill"
+        case .otherAsset, .otherLiability: "ellipsis.circle.fill"
+        }
+    }
+}
+
+@Model
+final class AssetHolding {
+    @Attribute(.unique) var id: UUID
+    var name: String
+    var kindRaw: String
+    var natureRaw: String
+    var currentValueMinor: Int64
+    var currencyCode: String
+    var costMinor: Int64?
+    var institution: String
+    var note: String
+    var valuationDate: Date
+    var includeInNetWorth: Bool
+    var sortOrder: Int
+    var isArchived: Bool
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        kind: AssetKind,
+        nature: WealthItemNature? = nil,
+        currentValueMinor: Int64,
+        currencyCode: String = "CNY",
+        costMinor: Int64? = nil,
+        institution: String = "",
+        note: String = "",
+        valuationDate: Date = Date(),
+        includeInNetWorth: Bool = true,
+        sortOrder: Int = 0,
+        isArchived: Bool = false,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.kindRaw = kind.rawValue
+        self.natureRaw = (nature ?? kind.nature).rawValue
+        self.currentValueMinor = currentValueMinor
+        self.currencyCode = currencyCode
+        self.costMinor = costMinor
+        self.institution = institution
+        self.note = note
+        self.valuationDate = valuationDate
+        self.includeInNetWorth = includeInNetWorth
+        self.sortOrder = sortOrder
+        self.isArchived = isArchived
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    var kind: AssetKind {
+        get {
+            if let kind = AssetKind(rawValue: kindRaw) { return kind }
+            return WealthItemNature(rawValue: natureRaw) == .liability
+                ? .otherLiability
+                : .otherAsset
+        }
+        set {
+            kindRaw = newValue.rawValue
+            natureRaw = newValue.nature.rawValue
+        }
+    }
+
+    var nature: WealthItemNature {
+        WealthItemNature(rawValue: natureRaw)
+            ?? AssetKind(rawValue: kindRaw)?.nature
+            ?? .asset
+    }
+}
+
+@Model
+final class AssetValuation {
+    @Attribute(.unique) var id: UUID
+    var assetID: UUID
+    var valueMinor: Int64
+    var recordedAt: Date
+    var note: String
+
+    init(
+        id: UUID = UUID(),
+        assetID: UUID,
+        valueMinor: Int64,
+        recordedAt: Date = Date(),
+        note: String = ""
+    ) {
+        self.id = id
+        self.assetID = assetID
+        self.valueMinor = valueMinor
+        self.recordedAt = recordedAt
+        self.note = note
+    }
+}
+
+@Model
+final class AccountBalanceAdjustment {
+    @Attribute(.unique) var id: UUID
+    var accountID: UUID
+    var deltaMinor: Int64
+    var occurredAt: Date
+    var note: String
+
+    init(
+        id: UUID = UUID(),
+        accountID: UUID,
+        deltaMinor: Int64,
+        occurredAt: Date = Date(),
+        note: String = ""
+    ) {
+        self.id = id
+        self.accountID = accountID
+        self.deltaMinor = deltaMinor
+        self.occurredAt = occurredAt
+        self.note = note
     }
 }
 

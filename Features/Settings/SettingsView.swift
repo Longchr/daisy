@@ -87,7 +87,7 @@ struct SettingsView: View {
                     NavigationLink {
                         AccountsView()
                     } label: {
-                        Label("账户", systemImage: "creditcard.fill")
+                        Label("账户与资产", systemImage: "building.columns.fill")
                     }
                     NavigationLink {
                         CategoriesView()

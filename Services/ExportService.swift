@@ -47,6 +47,10 @@ struct AccountExportRecord: Codable {
     let openingBalanceMinor: Int64
     let sortOrder: Int
     let isArchived: Bool
+    let wealthBucket: String?
+    let includeInNetWorth: Bool?
+    let createdAt: Date?
+    let updatedAt: Date?
 
     init(_ account: Account) {
         id = account.id
@@ -57,6 +61,10 @@ struct AccountExportRecord: Codable {
         openingBalanceMinor = account.openingBalanceMinor
         sortOrder = account.sortOrder
         isArchived = account.isArchived
+        wealthBucket = account.wealthBucketRaw.isEmpty ? nil : account.wealthBucketRaw
+        includeInNetWorth = account.includeInNetWorth
+        createdAt = account.createdAt
+        updatedAt = account.updatedAt
     }
 }
 
@@ -122,6 +130,74 @@ struct RecurringReminderExportRecord: Codable {
     }
 }
 
+struct AssetHoldingExportRecord: Codable {
+    let id: UUID
+    let name: String
+    let kind: String
+    let nature: String
+    let currentValueMinor: Int64
+    let currencyCode: String
+    let costMinor: Int64?
+    let institution: String
+    let note: String
+    let valuationDate: Date
+    let includeInNetWorth: Bool
+    let sortOrder: Int
+    let isArchived: Bool
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(_ asset: AssetHolding) {
+        id = asset.id
+        name = asset.name
+        kind = asset.kindRaw
+        nature = asset.natureRaw
+        currentValueMinor = asset.currentValueMinor
+        currencyCode = asset.currencyCode
+        costMinor = asset.costMinor
+        institution = asset.institution
+        note = asset.note
+        valuationDate = asset.valuationDate
+        includeInNetWorth = asset.includeInNetWorth
+        sortOrder = asset.sortOrder
+        isArchived = asset.isArchived
+        createdAt = asset.createdAt
+        updatedAt = asset.updatedAt
+    }
+}
+
+struct AssetValuationExportRecord: Codable {
+    let id: UUID
+    let assetID: UUID
+    let valueMinor: Int64
+    let recordedAt: Date
+    let note: String
+
+    init(_ valuation: AssetValuation) {
+        id = valuation.id
+        assetID = valuation.assetID
+        valueMinor = valuation.valueMinor
+        recordedAt = valuation.recordedAt
+        note = valuation.note
+    }
+}
+
+struct AccountBalanceAdjustmentExportRecord: Codable {
+    let id: UUID
+    let accountID: UUID
+    let deltaMinor: Int64
+    let occurredAt: Date
+    let note: String
+
+    init(_ adjustment: AccountBalanceAdjustment) {
+        id = adjustment.id
+        accountID = adjustment.accountID
+        deltaMinor = adjustment.deltaMinor
+        occurredAt = adjustment.occurredAt
+        note = adjustment.note
+    }
+}
+
 struct DaisyBackup: Codable {
     let schemaVersion: Int
     let createdAt: Date
@@ -130,6 +206,9 @@ struct DaisyBackup: Codable {
     let categories: [CategoryExportRecord]
     let budgets: [BudgetExportRecord]
     let recurringReminders: [RecurringReminderExportRecord]
+    let assets: [AssetHoldingExportRecord]
+    let assetValuations: [AssetValuationExportRecord]
+    let balanceAdjustments: [AccountBalanceAdjustmentExportRecord]
 
     init(
         schemaVersion: Int,
@@ -138,7 +217,10 @@ struct DaisyBackup: Codable {
         accounts: [AccountExportRecord],
         categories: [CategoryExportRecord],
         budgets: [BudgetExportRecord],
-        recurringReminders: [RecurringReminderExportRecord] = []
+        recurringReminders: [RecurringReminderExportRecord] = [],
+        assets: [AssetHoldingExportRecord] = [],
+        assetValuations: [AssetValuationExportRecord] = [],
+        balanceAdjustments: [AccountBalanceAdjustmentExportRecord] = []
     ) {
         self.schemaVersion = schemaVersion
         self.createdAt = createdAt
@@ -147,10 +229,14 @@ struct DaisyBackup: Codable {
         self.categories = categories
         self.budgets = budgets
         self.recurringReminders = recurringReminders
+        self.assets = assets
+        self.assetValuations = assetValuations
+        self.balanceAdjustments = balanceAdjustments
     }
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion, createdAt, transactions, accounts, categories, budgets, recurringReminders
+        case assets, assetValuations, balanceAdjustments
     }
 
     init(from decoder: Decoder) throws {
@@ -164,6 +250,12 @@ struct DaisyBackup: Codable {
         recurringReminders = try container.decodeIfPresent(
             [RecurringReminderExportRecord].self,
             forKey: .recurringReminders
+        ) ?? []
+        assets = try container.decodeIfPresent([AssetHoldingExportRecord].self, forKey: .assets) ?? []
+        assetValuations = try container.decodeIfPresent([AssetValuationExportRecord].self, forKey: .assetValuations) ?? []
+        balanceAdjustments = try container.decodeIfPresent(
+            [AccountBalanceAdjustmentExportRecord].self,
+            forKey: .balanceAdjustments
         ) ?? []
     }
 }
@@ -183,7 +275,7 @@ enum ExportService {
         }
     }
 
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
     static let maximumBackupRecords = 100_000
 
     static func makeCSVFile(transactions: [LedgerTransaction]) throws -> URL {
@@ -216,7 +308,10 @@ enum ExportService {
         accounts: [Account],
         categories: [LedgerCategory],
         budgets: [MonthlyBudget],
-        recurringReminders: [RecurringReminder] = []
+        recurringReminders: [RecurringReminder] = [],
+        assets: [AssetHolding] = [],
+        assetValuations: [AssetValuation] = [],
+        balanceAdjustments: [AccountBalanceAdjustment] = []
     ) throws -> URL {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -228,7 +323,10 @@ enum ExportService {
             accounts: accounts.map(AccountExportRecord.init),
             categories: categories.map(CategoryExportRecord.init),
             budgets: budgets.map(BudgetExportRecord.init),
-            recurringReminders: recurringReminders.map(RecurringReminderExportRecord.init)
+            recurringReminders: recurringReminders.map(RecurringReminderExportRecord.init),
+            assets: assets.map(AssetHoldingExportRecord.init),
+            assetValuations: assetValuations.map(AssetValuationExportRecord.init),
+            balanceAdjustments: balanceAdjustments.map(AccountBalanceAdjustmentExportRecord.init)
         )
         let data = try encoder.encode(backup)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Daisy-备份.json")
@@ -251,7 +349,10 @@ enum ExportService {
             accounts: [],
             categories: [],
             budgets: [],
-            recurringReminders: []
+            recurringReminders: [],
+            assets: [],
+            assetValuations: [],
+            balanceAdjustments: []
         )
         try validate(backup)
         return backup
@@ -266,13 +367,19 @@ enum ExportService {
             + backup.categories.count
             + backup.budgets.count
             + backup.recurringReminders.count
+            + backup.assets.count
+            + backup.assetValuations.count
+            + backup.balanceAdjustments.count
         guard totalCount <= maximumBackupRecords else { throw BackupError.tooManyRecords }
 
         guard Set(backup.transactions.map(\.id)).count == backup.transactions.count,
               Set(backup.accounts.map(\.id)).count == backup.accounts.count,
               Set(backup.categories.map(\.id)).count == backup.categories.count,
               Set(backup.budgets.map(\.id)).count == backup.budgets.count,
-              Set(backup.recurringReminders.map(\.id)).count == backup.recurringReminders.count else {
+              Set(backup.recurringReminders.map(\.id)).count == backup.recurringReminders.count,
+              Set(backup.assets.map(\.id)).count == backup.assets.count,
+              Set(backup.assetValuations.map(\.id)).count == backup.assetValuations.count,
+              Set(backup.balanceAdjustments.map(\.id)).count == backup.balanceAdjustments.count else {
             throw BackupError.invalidRecord
         }
 
@@ -281,6 +388,13 @@ enum ExportService {
             return "\(components.year ?? 0)-\(components.month ?? 0)-\(record.categoryID ?? "all")"
         }
         guard Set(budgetKeys).count == budgetKeys.count else {
+            throw BackupError.invalidRecord
+        }
+
+        let assetIDs = Set(backup.assets.map(\.id))
+        let accountIDs = Set(backup.accounts.map(\.id))
+        guard backup.assetValuations.allSatisfy({ assetIDs.contains($0.assetID) }),
+              backup.balanceAdjustments.allSatisfy({ accountIDs.contains($0.accountID) }) else {
             throw BackupError.invalidRecord
         }
 
@@ -305,6 +419,9 @@ enum ExportService {
                 && record.id.count <= 120
                 && !record.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && record.name.count <= 80
+        }), backup.accounts.allSatisfy({ record in
+            (record.wealthBucket.map { WealthBucket(rawValue: $0) != nil } ?? true)
+                && record.name.count <= 100
         }), backup.budgets.allSatisfy({ $0.amountMinor > 0 }),
             backup.recurringReminders.allSatisfy({ record in
                 !record.merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -313,7 +430,19 @@ enum ExportService {
                     && !record.categoryID.isEmpty
                     && record.categoryID.count <= 120
                     && (1...28).contains(record.dayOfMonth)
-            }) else {
+            }), backup.assets.allSatisfy({ record in
+                !record.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && record.name.count <= 200
+                    && AssetKind(rawValue: record.kind) != nil
+                    && WealthItemNature(rawValue: record.nature) != nil
+                    && AssetKind(rawValue: record.kind)?.nature == WealthItemNature(rawValue: record.nature)
+                    && record.currentValueMinor > 0
+                    && isCurrencyCode(record.currencyCode)
+                    && (record.costMinor.map { $0 >= 0 } ?? true)
+                    && record.institution.count <= 200
+                    && record.note.count <= 2_000
+            }), backup.assetValuations.allSatisfy({ $0.valueMinor > 0 && $0.note.count <= 2_000 }),
+            backup.balanceAdjustments.allSatisfy({ $0.deltaMinor != 0 && $0.note.count <= 2_000 }) else {
             throw BackupError.invalidRecord
         }
     }

@@ -5,6 +5,7 @@ import Charts
 struct DashboardView: View {
     private enum Destination: Hashable {
         case budget(Date)
+        case wealth
         case recognitionRecords
         case transactions(TransactionDrillDown)
     }
@@ -15,6 +16,9 @@ struct DashboardView: View {
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
     @Query(sort: \MonthlyBudget.monthStart, order: .reverse) private var budgets: [MonthlyBudget]
     @Query(sort: \RecognitionDraft.createdAt, order: .reverse) private var recognitionDrafts: [RecognitionDraft]
+    @Query(sort: \Account.sortOrder) private var accounts: [Account]
+    @Query(sort: \AccountBalanceAdjustment.occurredAt, order: .reverse) private var balanceAdjustments: [AccountBalanceAdjustment]
+    @Query(sort: \AssetHolding.sortOrder) private var assetHoldings: [AssetHolding]
     @State private var path: [Destination] = []
 
     private var monthlyTransactions: [LedgerTransaction] {
@@ -45,6 +49,15 @@ struct DashboardView: View {
         }.count
     }
 
+    private var wealthSummary: WealthSummary {
+        WealthSummaryCalculator.calculate(
+            accounts: accounts,
+            transactions: transactions,
+            adjustments: balanceAdjustments,
+            assets: assetHoldings
+        )
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
@@ -69,6 +82,10 @@ struct DashboardView: View {
                         balanceMinor: balanceMinor,
                         hideAmounts: settings.hideAmounts
                     )
+
+                    WealthOverviewCard(summary: wealthSummary, hideAmounts: settings.hideAmounts) {
+                        path.append(.wealth)
+                    }
 
                     BudgetProgressCard(budget: currentBudget, spentMinor: expenseMinor, hideAmounts: settings.hideAmounts) {
                         path.append(.budget(appState.selectedMonth))
@@ -101,6 +118,8 @@ struct DashboardView: View {
                 switch destination {
                 case .budget(let month):
                     BudgetSettingsView(month: month)
+                case .wealth:
+                    AccountsView()
                 case .recognitionRecords:
                     PendingRecognitionsView()
                 case .transactions(let drillDown):
@@ -129,6 +148,74 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+}
+
+private struct WealthOverviewCard: View {
+    let summary: WealthSummary
+    let hideAmounts: Bool
+    let open: () -> Void
+
+    private var hasValue: Bool {
+        summary.totalAssetsMinor != 0 || summary.totalLiabilitiesMinor != 0
+    }
+
+    var body: some View {
+        Button(action: open) {
+            DaisyCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Label("资产概览", systemImage: "building.columns.fill")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    if hasValue {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("净资产")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(render(summary.netWorthMinor))
+                                .font(.title2.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(summary.netWorthMinor < 0 ? DaisyTheme.danger : .primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        HStack(spacing: 18) {
+                            metric("总存款", summary.totalDepositsMinor, tint: DaisyTheme.accent)
+                            metric("总负债", summary.totalLiabilitiesMinor, tint: DaisyTheme.danger)
+                        }
+                    } else {
+                        Text("添加账户余额和其他资产，查看完整净资产。")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dashboardWealthCard")
+        .accessibilityHint("打开资产总览")
+    }
+
+    private func metric(_ title: String, _ value: Int64, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(render(value))
+                .font(.subheadline.monospacedDigit().weight(.semibold))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func render(_ value: Int64) -> String {
+        hideAmounts ? "••••" : Money(minorUnits: value).formatted()
     }
 }
 
