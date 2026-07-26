@@ -114,7 +114,7 @@ final class DaisyUITests: XCTestCase {
     }
 
     func testDashboardCashPlanningReturnsToDashboard() {
-        let cashCard = app.buttons["dashboardCashStatusCard"]
+        let cashCard = app.buttons.matching(identifier: "dashboardCashStatusCard").firstMatch
         XCTAssertTrue(cashCard.waitForExistence(timeout: 5))
         tapReliably(cashCard)
 
@@ -143,7 +143,7 @@ final class DaisyUITests: XCTestCase {
     }
 
     func testFinancialPlanCanBeAdded() {
-        let cashCard = app.buttons["dashboardCashStatusCard"]
+        let cashCard = app.buttons.matching(identifier: "dashboardCashStatusCard").firstMatch
         XCTAssertTrue(cashCard.waitForExistence(timeout: 5))
         tapReliably(cashCard)
         app.buttons["addFinancialPlanButton"].tap()
@@ -168,9 +168,7 @@ final class DaisyUITests: XCTestCase {
         app.tabBars.buttons["设置"].tap()
         app.staticTexts["月度预算"].tap()
 
-        let amount = app.textFields.matching(
-            NSPredicate(format: "placeholderValue == %@", "0.00")
-        ).firstMatch
+        let amount = app.textFields["budgetTotalAmountField"]
         XCTAssertTrue(amount.waitForExistence(timeout: 3))
         amount.tap()
         amount.typeText("3000")

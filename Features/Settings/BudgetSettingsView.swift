@@ -60,6 +60,7 @@ struct BudgetSettingsView: View {
                     TextField("0.00", text: $amountText)
                         .keyboardType(.decimalPad)
                         .font(.title2.monospacedDigit().weight(.semibold))
+                        .accessibilityIdentifier("budgetTotalAmountField")
                 }
                 Toggle("从可用现金预留", isOn: $reserveFromCash)
                     .accessibilityIdentifier("budgetReserveFromCashToggle")
