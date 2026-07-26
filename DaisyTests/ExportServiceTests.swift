@@ -127,6 +127,7 @@ final class ExportServiceTests: XCTestCase {
             openingBalanceMinor: 50_000,
             wealthBucket: .investment,
             includeInNetWorth: false,
+            investmentCashMinor: 8_000,
             createdAt: createdAt,
             updatedAt: createdAt
         )
@@ -169,6 +170,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(decoded.schemaVersion, ExportService.currentSchemaVersion)
         XCTAssertEqual(decoded.accounts[0].wealthBucket, WealthBucket.investment.rawValue)
         XCTAssertEqual(decoded.accounts[0].includeInNetWorth, false)
+        XCTAssertEqual(decoded.accounts[0].investmentCashMinor, 8_000)
         XCTAssertEqual(decoded.accounts[0].createdAt, createdAt)
         XCTAssertEqual(decoded.assets[0].id, asset.id)
         XCTAssertEqual(decoded.assets[0].costMinor, 6_500_000)
@@ -176,6 +178,91 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(decoded.assetValuations[0].assetID, asset.id)
         XCTAssertEqual(decoded.balanceAdjustments[0].accountID, account.id)
         XCTAssertEqual(decoded.balanceAdjustments[0].deltaMinor, -1_200)
+    }
+
+    func testSchemaFourRoundTripPreservesCashPlanningData() throws {
+        let date = Date(timeIntervalSince1970: 1_768_003_200)
+        let account = Account(
+            name: "证券账户",
+            type: .investment,
+            symbol: "chart.line.uptrend.xyaxis",
+            openingBalanceMinor: 80_000,
+            investmentCashMinor: 12_000
+        )
+        let asset = AssetHolding(
+            name: "黄金",
+            kind: .preciousMetal,
+            currentValueMinor: 30_000
+        )
+        let budget = MonthlyBudget(
+            monthStart: date,
+            amountMinor: 25_000,
+            reserveFromCash: true
+        )
+        let plan = FinancialPlan(
+            name: "长期投资",
+            kind: .investment,
+            targetAmountMinor: 100_000,
+            reservedCashMinor: 20_000,
+            heldAssetMinor: 30_000,
+            cashSourceAccountID: account.id,
+            linkedInvestmentAccountID: account.id,
+            linkedAssetID: asset.id,
+            targetDate: date,
+            priority: 2,
+            note: "按月投入",
+            createdAt: date,
+            updatedAt: date
+        )
+
+        let url = try ExportService.makeJSONFile(
+            transactions: [],
+            accounts: [account],
+            categories: [],
+            budgets: [budget],
+            assets: [asset],
+            financialPlans: [plan]
+        )
+        let decoded = try ExportService.decodeBackup(Data(contentsOf: url))
+
+        XCTAssertEqual(decoded.schemaVersion, 4)
+        XCTAssertEqual(decoded.accounts[0].investmentCashMinor, 12_000)
+        XCTAssertEqual(decoded.budgets[0].reserveFromCash, true)
+        XCTAssertEqual(decoded.financialPlans.count, 1)
+        XCTAssertEqual(decoded.financialPlans[0].name, "长期投资")
+        XCTAssertEqual(decoded.financialPlans[0].heldAssetMinor, 30_000)
+        XCTAssertEqual(decoded.financialPlans[0].linkedAssetID, asset.id)
+    }
+
+    func testVersionThreeBackupWithoutCashPlanningFieldsStillDecodes() throws {
+        let account = Account(
+            name: "旧投资账户",
+            type: .investment,
+            symbol: "chart.line.uptrend.xyaxis"
+        )
+        let budget = MonthlyBudget(monthStart: Date(), amountMinor: 20_000)
+        let backup = DaisyBackup(
+            schemaVersion: 3,
+            createdAt: Date(),
+            transactions: [],
+            accounts: [AccountExportRecord(account)],
+            categories: [],
+            budgets: [BudgetExportRecord(budget)]
+        )
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: try encode(backup)) as? [String: Any])
+        object.removeValue(forKey: "financialPlans")
+        var accountObject = try XCTUnwrap((object["accounts"] as? [[String: Any]])?.first)
+        accountObject.removeValue(forKey: "investmentCashMinor")
+        object["accounts"] = [accountObject]
+        var budgetObject = try XCTUnwrap((object["budgets"] as? [[String: Any]])?.first)
+        budgetObject.removeValue(forKey: "reserveFromCash")
+        object["budgets"] = [budgetObject]
+
+        let decoded = try ExportService.decodeBackup(try JSONSerialization.data(withJSONObject: object))
+
+        XCTAssertNil(decoded.accounts[0].investmentCashMinor)
+        XCTAssertNil(decoded.budgets[0].reserveFromCash)
+        XCTAssertTrue(decoded.financialPlans.isEmpty)
     }
 
     func testRejectsOrphanedWealthHistory() throws {

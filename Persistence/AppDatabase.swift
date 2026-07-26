@@ -22,6 +22,7 @@ final class AppDatabase {
                 AssetHolding.self,
                 AssetValuation.self,
                 AccountBalanceAdjustment.self,
+                FinancialPlan.self,
                 configurations: configuration
             )
         } catch {

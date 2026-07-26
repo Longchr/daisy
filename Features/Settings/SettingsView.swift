@@ -80,6 +80,11 @@ struct SettingsView: View {
 
                 Section("账本配置") {
                     NavigationLink {
+                        CashPlanningView()
+                    } label: {
+                        Label("资金调度", systemImage: "arrow.triangle.branch")
+                    }
+                    NavigationLink {
                         BudgetSettingsView()
                     } label: {
                         Label("月度预算", systemImage: "gauge.with.dots.needle.67percent")

@@ -13,6 +13,7 @@ struct DataManagementView: View {
     @Query(sort: \AssetHolding.sortOrder) private var assets: [AssetHolding]
     @Query(sort: \AssetValuation.recordedAt, order: .reverse) private var assetValuations: [AssetValuation]
     @Query(sort: \AccountBalanceAdjustment.occurredAt, order: .reverse) private var balanceAdjustments: [AccountBalanceAdjustment]
+    @Query(sort: \FinancialPlan.updatedAt, order: .reverse) private var financialPlans: [FinancialPlan]
 
     @State private var csvURL: URL?
     @State private var jsonURL: URL?
@@ -28,7 +29,8 @@ struct DataManagementView: View {
             recurringReminders.count,
             assets.count,
             assetValuations.count,
-            balanceAdjustments.count
+            balanceAdjustments.count,
+            financialPlans.count
         ]
     }
 
@@ -70,6 +72,7 @@ struct DataManagementView: View {
                 LabeledContent("账单数量", value: "\(transactions.count)")
                 LabeledContent("金融账户", value: "\(accounts.count)")
                 LabeledContent("资产与负债", value: "\(assets.count)")
+                LabeledContent("资金计划", value: "\(financialPlans.count)")
                 Button("删除全部账单", role: .destructive) {
                     showDeleteConfirmation = true
                 }
@@ -100,7 +103,8 @@ struct DataManagementView: View {
             recurringReminders: recurringReminders,
             assets: assets,
             assetValuations: assetValuations,
-            balanceAdjustments: balanceAdjustments
+            balanceAdjustments: balanceAdjustments,
+            financialPlans: financialPlans
         )
     }
 
@@ -156,6 +160,7 @@ struct DataManagementView: View {
                     isArchived: record.isArchived,
                     wealthBucket: record.wealthBucket.flatMap(WealthBucket.init(rawValue:)),
                     includeInNetWorth: record.includeInNetWorth ?? true,
+                    investmentCashMinor: record.investmentCashMinor ?? 0,
                     createdAt: record.createdAt ?? Date(),
                     updatedAt: record.updatedAt ?? record.createdAt ?? Date()
                 ))
@@ -190,6 +195,7 @@ struct DataManagementView: View {
                     monthStart: record.monthStart,
                     categoryID: record.categoryID,
                     amountMinor: record.amountMinor,
+                    reserveFromCash: record.reserveFromCash ?? false,
                     createdAt: record.createdAt ?? Date(),
                     updatedAt: record.updatedAt ?? record.createdAt ?? Date()
                 ))
@@ -259,6 +265,31 @@ struct DataManagementView: View {
                     deltaMinor: record.deltaMinor,
                     occurredAt: record.occurredAt,
                     note: record.note
+                ))
+                insertedRecords += 1
+            }
+
+            var existingPlanIDs = Set(financialPlans.map(\.id))
+            for record in backup.financialPlans where existingPlanIDs.insert(record.id).inserted {
+                guard let kind = FinancialPlanKind(rawValue: record.kind),
+                      let status = FinancialPlanStatus(rawValue: record.status) else { continue }
+                modelContext.insert(FinancialPlan(
+                    id: record.id,
+                    name: record.name,
+                    kind: kind,
+                    targetAmountMinor: record.targetAmountMinor,
+                    reservedCashMinor: record.reservedCashMinor,
+                    heldAssetMinor: record.heldAssetMinor,
+                    currencyCode: record.currencyCode,
+                    cashSourceAccountID: record.cashSourceAccountID,
+                    linkedInvestmentAccountID: record.linkedInvestmentAccountID,
+                    linkedAssetID: record.linkedAssetID,
+                    targetDate: record.targetDate,
+                    status: status,
+                    priority: record.priority,
+                    note: record.note,
+                    createdAt: record.createdAt,
+                    updatedAt: record.updatedAt
                 ))
                 insertedRecords += 1
             }

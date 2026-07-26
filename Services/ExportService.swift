@@ -49,6 +49,7 @@ struct AccountExportRecord: Codable {
     let isArchived: Bool
     let wealthBucket: String?
     let includeInNetWorth: Bool?
+    let investmentCashMinor: Int64?
     let createdAt: Date?
     let updatedAt: Date?
 
@@ -63,6 +64,7 @@ struct AccountExportRecord: Codable {
         isArchived = account.isArchived
         wealthBucket = account.wealthBucketRaw.isEmpty ? nil : account.wealthBucketRaw
         includeInNetWorth = account.includeInNetWorth
+        investmentCashMinor = account.investmentCashMinor
         createdAt = account.createdAt
         updatedAt = account.updatedAt
     }
@@ -93,6 +95,7 @@ struct BudgetExportRecord: Codable {
     let monthStart: Date
     let categoryID: String?
     let amountMinor: Int64
+    let reserveFromCash: Bool?
     let createdAt: Date?
     let updatedAt: Date?
 
@@ -101,6 +104,7 @@ struct BudgetExportRecord: Codable {
         monthStart = budget.monthStart
         categoryID = budget.categoryID
         amountMinor = budget.amountMinor
+        reserveFromCash = budget.reserveFromCash
         createdAt = budget.createdAt
         updatedAt = budget.updatedAt
     }
@@ -198,6 +202,44 @@ struct AccountBalanceAdjustmentExportRecord: Codable {
     }
 }
 
+struct FinancialPlanExportRecord: Codable {
+    let id: UUID
+    let name: String
+    let kind: String
+    let targetAmountMinor: Int64
+    let reservedCashMinor: Int64
+    let heldAssetMinor: Int64
+    let currencyCode: String
+    let cashSourceAccountID: UUID?
+    let linkedInvestmentAccountID: UUID?
+    let linkedAssetID: UUID?
+    let targetDate: Date?
+    let status: String
+    let priority: Int
+    let note: String
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(_ plan: FinancialPlan) {
+        id = plan.id
+        name = plan.name
+        kind = plan.kindRaw
+        targetAmountMinor = plan.targetAmountMinor
+        reservedCashMinor = plan.reservedCashMinor
+        heldAssetMinor = plan.heldAssetMinor
+        currencyCode = plan.currencyCode
+        cashSourceAccountID = plan.cashSourceAccountID
+        linkedInvestmentAccountID = plan.linkedInvestmentAccountID
+        linkedAssetID = plan.linkedAssetID
+        targetDate = plan.targetDate
+        status = plan.statusRaw
+        priority = plan.priority
+        note = plan.note
+        createdAt = plan.createdAt
+        updatedAt = plan.updatedAt
+    }
+}
+
 struct DaisyBackup: Codable {
     let schemaVersion: Int
     let createdAt: Date
@@ -209,6 +251,7 @@ struct DaisyBackup: Codable {
     let assets: [AssetHoldingExportRecord]
     let assetValuations: [AssetValuationExportRecord]
     let balanceAdjustments: [AccountBalanceAdjustmentExportRecord]
+    let financialPlans: [FinancialPlanExportRecord]
 
     init(
         schemaVersion: Int,
@@ -220,7 +263,8 @@ struct DaisyBackup: Codable {
         recurringReminders: [RecurringReminderExportRecord] = [],
         assets: [AssetHoldingExportRecord] = [],
         assetValuations: [AssetValuationExportRecord] = [],
-        balanceAdjustments: [AccountBalanceAdjustmentExportRecord] = []
+        balanceAdjustments: [AccountBalanceAdjustmentExportRecord] = [],
+        financialPlans: [FinancialPlanExportRecord] = []
     ) {
         self.schemaVersion = schemaVersion
         self.createdAt = createdAt
@@ -232,11 +276,12 @@ struct DaisyBackup: Codable {
         self.assets = assets
         self.assetValuations = assetValuations
         self.balanceAdjustments = balanceAdjustments
+        self.financialPlans = financialPlans
     }
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion, createdAt, transactions, accounts, categories, budgets, recurringReminders
-        case assets, assetValuations, balanceAdjustments
+        case assets, assetValuations, balanceAdjustments, financialPlans
     }
 
     init(from decoder: Decoder) throws {
@@ -257,6 +302,10 @@ struct DaisyBackup: Codable {
             [AccountBalanceAdjustmentExportRecord].self,
             forKey: .balanceAdjustments
         ) ?? []
+        financialPlans = try container.decodeIfPresent(
+            [FinancialPlanExportRecord].self,
+            forKey: .financialPlans
+        ) ?? []
     }
 }
 
@@ -275,7 +324,7 @@ enum ExportService {
         }
     }
 
-    static let currentSchemaVersion = 3
+    static let currentSchemaVersion = 4
     static let maximumBackupRecords = 100_000
 
     static func makeCSVFile(transactions: [LedgerTransaction]) throws -> URL {
@@ -311,7 +360,8 @@ enum ExportService {
         recurringReminders: [RecurringReminder] = [],
         assets: [AssetHolding] = [],
         assetValuations: [AssetValuation] = [],
-        balanceAdjustments: [AccountBalanceAdjustment] = []
+        balanceAdjustments: [AccountBalanceAdjustment] = [],
+        financialPlans: [FinancialPlan] = []
     ) throws -> URL {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -326,7 +376,8 @@ enum ExportService {
             recurringReminders: recurringReminders.map(RecurringReminderExportRecord.init),
             assets: assets.map(AssetHoldingExportRecord.init),
             assetValuations: assetValuations.map(AssetValuationExportRecord.init),
-            balanceAdjustments: balanceAdjustments.map(AccountBalanceAdjustmentExportRecord.init)
+            balanceAdjustments: balanceAdjustments.map(AccountBalanceAdjustmentExportRecord.init),
+            financialPlans: financialPlans.map(FinancialPlanExportRecord.init)
         )
         let data = try encoder.encode(backup)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Daisy-备份.json")
@@ -370,6 +421,7 @@ enum ExportService {
             + backup.assets.count
             + backup.assetValuations.count
             + backup.balanceAdjustments.count
+            + backup.financialPlans.count
         guard totalCount <= maximumBackupRecords else { throw BackupError.tooManyRecords }
 
         guard Set(backup.transactions.map(\.id)).count == backup.transactions.count,
@@ -379,7 +431,8 @@ enum ExportService {
               Set(backup.recurringReminders.map(\.id)).count == backup.recurringReminders.count,
               Set(backup.assets.map(\.id)).count == backup.assets.count,
               Set(backup.assetValuations.map(\.id)).count == backup.assetValuations.count,
-              Set(backup.balanceAdjustments.map(\.id)).count == backup.balanceAdjustments.count else {
+              Set(backup.balanceAdjustments.map(\.id)).count == backup.balanceAdjustments.count,
+              Set(backup.financialPlans.map(\.id)).count == backup.financialPlans.count else {
             throw BackupError.invalidRecord
         }
 
@@ -394,7 +447,12 @@ enum ExportService {
         let assetIDs = Set(backup.assets.map(\.id))
         let accountIDs = Set(backup.accounts.map(\.id))
         guard backup.assetValuations.allSatisfy({ assetIDs.contains($0.assetID) }),
-              backup.balanceAdjustments.allSatisfy({ accountIDs.contains($0.accountID) }) else {
+              backup.balanceAdjustments.allSatisfy({ accountIDs.contains($0.accountID) }),
+              backup.financialPlans.allSatisfy({ plan in
+                  (plan.cashSourceAccountID.map(accountIDs.contains) ?? true)
+                      && (plan.linkedInvestmentAccountID.map(accountIDs.contains) ?? true)
+                      && (plan.linkedAssetID.map(assetIDs.contains) ?? true)
+              }) else {
             throw BackupError.invalidRecord
         }
 
@@ -413,6 +471,7 @@ enum ExportService {
                 && !record.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && record.name.count <= 100
                 && isCurrencyCode(record.currencyCode)
+                && (record.investmentCashMinor.map { $0 >= 0 } ?? true)
         }), backup.categories.allSatisfy({ record in
             TransactionKind(rawValue: record.kind) != nil
                 && !record.id.isEmpty
@@ -442,7 +501,19 @@ enum ExportService {
                     && record.institution.count <= 200
                     && record.note.count <= 2_000
             }), backup.assetValuations.allSatisfy({ $0.valueMinor > 0 && $0.note.count <= 2_000 }),
-            backup.balanceAdjustments.allSatisfy({ $0.deltaMinor != 0 && $0.note.count <= 2_000 }) else {
+            backup.balanceAdjustments.allSatisfy({ $0.deltaMinor != 0 && $0.note.count <= 2_000 }),
+            backup.financialPlans.allSatisfy({ record in
+                !record.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && record.name.count <= 100
+                    && FinancialPlanKind(rawValue: record.kind) != nil
+                    && FinancialPlanStatus(rawValue: record.status) != nil
+                    && record.targetAmountMinor > 0
+                    && record.reservedCashMinor >= 0
+                    && record.heldAssetMinor >= 0
+                    && isCurrencyCode(record.currencyCode)
+                    && (0...3).contains(record.priority)
+                    && record.note.count <= 2_000
+            }) else {
             throw BackupError.invalidRecord
         }
     }

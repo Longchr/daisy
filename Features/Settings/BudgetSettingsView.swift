@@ -6,9 +6,11 @@ struct BudgetSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @Query(sort: \MonthlyBudget.monthStart, order: .reverse) private var budgets: [MonthlyBudget]
     @Query(sort: \LedgerCategory.sortOrder) private var categories: [LedgerCategory]
+    @Query(sort: \LedgerTransaction.occurredAt, order: .reverse) private var transactions: [LedgerTransaction]
 
     @State private var selectedMonth: Date
     @State private var amountText = ""
+    @State private var reserveFromCash = true
     @State private var isAddingCategoryBudget = false
     @State private var editingCategoryBudget: MonthlyBudget?
 
@@ -31,6 +33,22 @@ struct BudgetSettingsView: View {
         }
     }
 
+    private var spentMinor: Int64 {
+        let monthly = transactions.filter {
+            $0.currencyCode == "CNY"
+                && Calendar.current.isDate($0.occurredAt, equalTo: selectedMonth, toGranularity: .month)
+        }
+        return FinancialSummary(transactions: monthly).netExpenseMinor
+    }
+
+    private var amountMinor: Int64 {
+        max(0, Money(decimalString: amountText)?.minorUnits ?? 0)
+    }
+
+    private var reservedRemainingMinor: Int64 {
+        reserveFromCash ? max(0, amountMinor - spentMinor) : 0
+    }
+
     var body: some View {
         Form {
             Section {
@@ -43,10 +61,18 @@ struct BudgetSettingsView: View {
                         .keyboardType(.decimalPad)
                         .font(.title2.monospacedDigit().weight(.semibold))
                 }
+                Toggle("从可用现金预留", isOn: $reserveFromCash)
+                    .accessibilityIdentifier("budgetReserveFromCashToggle")
+                if reserveFromCash && amountMinor > 0 {
+                    LabeledContent("当前占用") {
+                        Text(Money(minorUnits: reservedRemainingMinor).formatted())
+                            .monospacedDigit()
+                    }
+                }
             } header: {
                 Text("总预算")
             } footer: {
-                Text("总预算按本月支出扣减，退款会抵扣总预算已用金额；预算不会限制记账。")
+                Text("开启预留后，只从可用现金扣除总预算剩余金额。分类预算是明细，不会重复占用现金。")
             }
 
             Section {
@@ -119,8 +145,10 @@ struct BudgetSettingsView: View {
     private func loadExisting() {
         if let existing {
             amountText = NSDecimalNumber(decimal: Money(minorUnits: existing.amountMinor).decimalValue).stringValue
+            reserveFromCash = existing.reserveFromCash
         } else {
             amountText = ""
+            reserveFromCash = true
         }
     }
 
@@ -128,9 +156,14 @@ struct BudgetSettingsView: View {
         guard let amount = Money(decimalString: amountText)?.minorUnits, amount > 0 else { return }
         if let existing {
             existing.amountMinor = amount
+            existing.reserveFromCash = reserveFromCash
             existing.updatedAt = Date()
         } else {
-            modelContext.insert(MonthlyBudget(monthStart: selectedMonth, amountMinor: amount))
+            modelContext.insert(MonthlyBudget(
+                monthStart: selectedMonth,
+                amountMinor: amount,
+                reserveFromCash: reserveFromCash
+            ))
         }
         do {
             try modelContext.save()
@@ -147,6 +180,7 @@ struct BudgetSettingsView: View {
         do {
             try modelContext.save()
             amountText = ""
+            reserveFromCash = true
             appState.presentToast("本月预算已删除", style: .warning)
         } catch {
             modelContext.rollback()

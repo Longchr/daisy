@@ -59,6 +59,17 @@ struct WealthOverviewView: View {
                     .listRowBackground(Color.clear)
             }
 
+            Section {
+                NavigationLink {
+                    CashPlanningView()
+                } label: {
+                    Label("资金安排", systemImage: "arrow.triangle.branch")
+                }
+                .accessibilityIdentifier("wealthCashPlanningLink")
+            } footer: {
+                Text("按预算、投资与生活目标安排现金，并查看当前真正可用的金额。")
+            }
+
             if !composition.isEmpty {
                 Section("资产构成") {
                     Chart(composition) { item in
@@ -376,6 +387,10 @@ private struct AccountWealthDetailView: View {
         AccountBalanceCalculator.balanceMinor(for: account, transactions: transactions, adjustments: adjustments)
     }
 
+    private var investmentCash: Int64 {
+        min(max(0, balance), max(0, account.investmentCashMinor))
+    }
+
     var body: some View {
         List {
             Section {
@@ -407,6 +422,22 @@ private struct AccountWealthDetailView: View {
                             appState.presentToast("账户设置保存失败", style: .error)
                         }
                     }
+            }
+            if account.wealthBucket == .investment {
+                Section {
+                    LabeledContent("可用现金") {
+                        Text(settings.hideAmounts ? "••••" : Money(minorUnits: investmentCash).formatted())
+                            .monospacedDigit()
+                    }
+                    LabeledContent("已投资部分") {
+                        Text(settings.hideAmounts ? "••••" : Money(minorUnits: max(0, balance - investmentCash)).formatted())
+                            .monospacedDigit()
+                    }
+                } header: {
+                    Text("投资账户构成")
+                } footer: {
+                    Text("两部分之和等于账户余额，只会计入一次总资产。可用现金会进入资金调度。")
+                }
             }
             Section("余额") {
                 Button {
@@ -460,12 +491,15 @@ private struct AccountEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var appState: AppState
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
+    @Query(sort: \LedgerTransaction.occurredAt, order: .reverse) private var transactions: [LedgerTransaction]
+    @Query(sort: \AccountBalanceAdjustment.occurredAt, order: .reverse) private var adjustments: [AccountBalanceAdjustment]
 
     let account: Account?
     @State private var name: String
     @State private var type: AccountType
     @State private var bucket: WealthBucket
     @State private var openingBalanceText: String
+    @State private var investmentCashText: String
     @State private var includeInNetWorth: Bool
 
     init(account: Account? = nil) {
@@ -476,12 +510,29 @@ private struct AccountEditorView: View {
         _openingBalanceText = State(initialValue: account.map {
             NSDecimalNumber(decimal: Money(minorUnits: $0.openingBalanceMinor).decimalValue).stringValue
         } ?? "0.00")
+        _investmentCashText = State(initialValue: account.map {
+            NSDecimalNumber(decimal: Money(minorUnits: $0.investmentCashMinor).decimalValue).stringValue
+        } ?? "0.00")
         _includeInNetWorth = State(initialValue: account?.includeInNetWorth ?? true)
     }
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && Money(decimalString: openingBalanceText) != nil
+            && (bucket != .investment
+                || ((Money(decimalString: investmentCashText)?.minorUnits ?? -1) >= 0
+                    && (Money(decimalString: investmentCashText)?.minorUnits ?? Int64.max) <= availableInvestmentBalance))
+    }
+
+    private var availableInvestmentBalance: Int64 {
+        if let account {
+            return max(0, AccountBalanceCalculator.balanceMinor(
+                for: account,
+                transactions: transactions,
+                adjustments: adjustments
+            ))
+        }
+        return max(0, Money(decimalString: openingBalanceText)?.minorUnits ?? 0)
     }
 
     var body: some View {
@@ -503,6 +554,21 @@ private struct AccountEditorView: View {
                             .keyboardType(.numbersAndPunctuation)
                     } footer: {
                         Text(bucket == .liability ? "请输入欠款金额；保存后会以负余额计入负债。" : "期初余额不会计入本月收入。")
+                    }
+                }
+                if bucket == .investment {
+                    Section {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("¥").foregroundStyle(.secondary)
+                            TextField("0.00", text: $investmentCashText)
+                                .keyboardType(.decimalPad)
+                                .font(.title3.monospacedDigit().weight(.semibold))
+                                .accessibilityIdentifier("investmentCashField")
+                        }
+                    } header: {
+                        Text("账户内现金")
+                    } footer: {
+                        Text("账户当前余额中尚未投资、可直接使用的部分。不能高于当前余额 \(Money(minorUnits: availableInvestmentBalance).formatted())。其余部分按投资持仓统计。")
                     }
                 }
                 Section {
@@ -532,6 +598,7 @@ private struct AccountEditorView: View {
     private func save() {
         guard canSave, let parsed = Money(decimalString: openingBalanceText) else { return }
         let openingBalance = bucket == .liability ? -abs(parsed.minorUnits) : parsed.minorUnits
+        let investmentCash = max(0, Money(decimalString: investmentCashText)?.minorUnits ?? 0)
         let target = account ?? Account(
             name: name,
             type: type,
@@ -539,7 +606,8 @@ private struct AccountEditorView: View {
             openingBalanceMinor: openingBalance,
             sortOrder: accounts.count,
             wealthBucket: bucket,
-            includeInNetWorth: includeInNetWorth
+            includeInNetWorth: includeInNetWorth,
+            investmentCashMinor: bucket == .investment ? min(investmentCash, max(0, openingBalance)) : 0
         )
         if account == nil { modelContext.insert(target) }
         target.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -547,6 +615,9 @@ private struct AccountEditorView: View {
         target.symbol = typeSymbol
         target.wealthBucket = bucket
         target.includeInNetWorth = includeInNetWorth
+        target.investmentCashMinor = bucket == .investment
+            ? min(investmentCash, availableInvestmentBalance)
+            : 0
         target.updatedAt = Date()
         do {
             try modelContext.save()

@@ -5,7 +5,7 @@ import Charts
 struct DashboardView: View {
     private enum Destination: Hashable {
         case budget(Date)
-        case wealth
+        case cashPlanning
         case recognitionRecords
         case transactions(TransactionDrillDown)
     }
@@ -18,7 +18,7 @@ struct DashboardView: View {
     @Query(sort: \RecognitionDraft.createdAt, order: .reverse) private var recognitionDrafts: [RecognitionDraft]
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
     @Query(sort: \AccountBalanceAdjustment.occurredAt, order: .reverse) private var balanceAdjustments: [AccountBalanceAdjustment]
-    @Query(sort: \AssetHolding.sortOrder) private var assetHoldings: [AssetHolding]
+    @Query(sort: \FinancialPlan.updatedAt, order: .reverse) private var financialPlans: [FinancialPlan]
     @State private var path: [Destination] = []
 
     private var monthlyTransactions: [LedgerTransaction] {
@@ -49,12 +49,13 @@ struct DashboardView: View {
         }.count
     }
 
-    private var wealthSummary: WealthSummary {
-        WealthSummaryCalculator.calculate(
+    private var cashSummary: CashAvailabilitySummary {
+        CashAvailabilityCalculator.calculate(
             accounts: accounts,
             transactions: transactions,
             adjustments: balanceAdjustments,
-            assets: assetHoldings
+            budgets: budgets,
+            plans: financialPlans
         )
     }
 
@@ -83,8 +84,8 @@ struct DashboardView: View {
                         hideAmounts: settings.hideAmounts
                     )
 
-                    WealthOverviewCard(summary: wealthSummary, hideAmounts: settings.hideAmounts) {
-                        path.append(.wealth)
+                    CashStatusCard(summary: cashSummary, hideAmounts: settings.hideAmounts) {
+                        path.append(.cashPlanning)
                     }
 
                     BudgetProgressCard(budget: currentBudget, spentMinor: expenseMinor, hideAmounts: settings.hideAmounts) {
@@ -118,8 +119,8 @@ struct DashboardView: View {
                 switch destination {
                 case .budget(let month):
                     BudgetSettingsView(month: month)
-                case .wealth:
-                    AccountsView()
+                case .cashPlanning:
+                    CashPlanningView()
                 case .recognitionRecords:
                     PendingRecognitionsView()
                 case .transactions(let drillDown):
@@ -151,21 +152,17 @@ struct DashboardView: View {
     }
 }
 
-private struct WealthOverviewCard: View {
-    let summary: WealthSummary
+private struct CashStatusCard: View {
+    let summary: CashAvailabilitySummary
     let hideAmounts: Bool
     let open: () -> Void
-
-    private var hasValue: Bool {
-        summary.totalAssetsMinor != 0 || summary.totalLiabilitiesMinor != 0
-    }
 
     var body: some View {
         Button(action: open) {
             DaisyCard {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
-                        Label("资产概览", systemImage: "building.columns.fill")
+                        Label("资金状态", systemImage: "banknote.fill")
                             .font(.headline)
                             .foregroundStyle(.primary)
                         Spacer()
@@ -174,23 +171,26 @@ private struct WealthOverviewCard: View {
                             .foregroundStyle(.tertiary)
                     }
 
-                    if hasValue {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("净资产")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(render(summary.netWorthMinor))
-                                .font(.title2.monospacedDigit().weight(.semibold))
-                                .foregroundStyle(summary.netWorthMinor < 0 ? DaisyTheme.danger : .primary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                        HStack(spacing: 18) {
-                            metric("总存款", summary.totalDepositsMinor, tint: DaisyTheme.accent)
-                            metric("总负债", summary.totalLiabilitiesMinor, tint: DaisyTheme.danger)
-                        }
-                    } else {
-                        Text("添加账户余额和其他资产，查看完整净资产。")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("当前可用现金")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(render(summary.availableCashMinor))
+                            .font(.title2.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(summary.cashShortfallMinor > 0 ? DaisyTheme.danger : .primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    HStack(spacing: 18) {
+                        metric("流动资金", summary.liquidFundsMinor, tint: DaisyTheme.income)
+                        metric(
+                            summary.cashShortfallMinor > 0 ? "资金缺口" : "资金占用",
+                            summary.cashShortfallMinor > 0 ? summary.cashShortfallMinor : summary.occupiedCashMinor,
+                            tint: summary.cashShortfallMinor > 0 ? DaisyTheme.danger : DaisyTheme.warning
+                        )
+                    }
+                    if summary.liquidFundsMinor == 0 {
+                        Text("添加账户余额后，Daisy 会计算可调度资金。")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -198,8 +198,8 @@ private struct WealthOverviewCard: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("dashboardWealthCard")
-        .accessibilityHint("打开资产总览")
+        .accessibilityIdentifier("dashboardCashStatusCard")
+        .accessibilityHint("打开资金调度")
     }
 
     private func metric(_ title: String, _ value: Int64, tint: Color) -> some View {

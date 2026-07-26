@@ -168,6 +168,7 @@ final class Account {
     var isArchived: Bool
     var wealthBucketRaw: String = ""
     var includeInNetWorth: Bool = true
+    var investmentCashMinor: Int64 = 0
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 
@@ -182,6 +183,7 @@ final class Account {
         isArchived: Bool = false,
         wealthBucket: WealthBucket? = nil,
         includeInNetWorth: Bool = true,
+        investmentCashMinor: Int64 = 0,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -195,6 +197,7 @@ final class Account {
         self.isArchived = isArchived
         self.wealthBucketRaw = (wealthBucket ?? type.defaultWealthBucket).rawValue
         self.includeInNetWorth = includeInNetWorth
+        self.investmentCashMinor = max(0, investmentCashMinor)
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -537,6 +540,7 @@ final class MonthlyBudget {
     var monthStart: Date
     var categoryID: String?
     var amountMinor: Int64
+    var reserveFromCash: Bool = false
     var createdAt: Date
     var updatedAt: Date
 
@@ -545,6 +549,7 @@ final class MonthlyBudget {
         monthStart: Date,
         categoryID: String? = nil,
         amountMinor: Int64,
+        reserveFromCash: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -552,8 +557,139 @@ final class MonthlyBudget {
         self.monthStart = Calendar.current.dateInterval(of: .month, for: monthStart)?.start ?? monthStart
         self.categoryID = categoryID
         self.amountMinor = amountMinor
+        self.reserveFromCash = reserveFromCash
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+}
+
+enum FinancialPlanKind: String, Codable, CaseIterable, Identifiable, Sendable {
+    case living
+    case investment
+    case emergency
+    case travel
+    case education
+    case majorPurchase
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .living: "生活安排"
+        case .investment: "投资计划"
+        case .emergency: "应急储备"
+        case .travel: "旅行"
+        case .education: "教育"
+        case .majorPurchase: "大额支出"
+        case .other: "其他目标"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .living: "house.fill"
+        case .investment: "chart.line.uptrend.xyaxis"
+        case .emergency: "cross.case.fill"
+        case .travel: "airplane"
+        case .education: "graduationcap.fill"
+        case .majorPurchase: "cart.fill"
+        case .other: "target"
+        }
+    }
+}
+
+enum FinancialPlanStatus: String, Codable, CaseIterable, Identifiable, Sendable {
+    case active
+    case paused
+    case completed
+    case archived
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .active: "进行中"
+        case .paused: "已暂停"
+        case .completed: "已完成"
+        case .archived: "已归档"
+        }
+    }
+}
+
+@Model
+final class FinancialPlan {
+    @Attribute(.unique) var id: UUID
+    var name: String
+    var kindRaw: String
+    var targetAmountMinor: Int64
+    var reservedCashMinor: Int64
+    var heldAssetMinor: Int64
+    var currencyCode: String
+    var cashSourceAccountID: UUID?
+    var linkedInvestmentAccountID: UUID?
+    var linkedAssetID: UUID?
+    var targetDate: Date?
+    var statusRaw: String
+    var priority: Int
+    var note: String
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        kind: FinancialPlanKind,
+        targetAmountMinor: Int64,
+        reservedCashMinor: Int64 = 0,
+        heldAssetMinor: Int64 = 0,
+        currencyCode: String = "CNY",
+        cashSourceAccountID: UUID? = nil,
+        linkedInvestmentAccountID: UUID? = nil,
+        linkedAssetID: UUID? = nil,
+        targetDate: Date? = nil,
+        status: FinancialPlanStatus = .active,
+        priority: Int = 1,
+        note: String = "",
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.kindRaw = kind.rawValue
+        self.targetAmountMinor = max(0, targetAmountMinor)
+        self.reservedCashMinor = max(0, reservedCashMinor)
+        self.heldAssetMinor = max(0, heldAssetMinor)
+        self.currencyCode = currencyCode
+        self.cashSourceAccountID = cashSourceAccountID
+        self.linkedInvestmentAccountID = linkedInvestmentAccountID
+        self.linkedAssetID = linkedAssetID
+        self.targetDate = targetDate
+        self.statusRaw = status.rawValue
+        self.priority = min(3, max(0, priority))
+        self.note = note
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    var kind: FinancialPlanKind {
+        get { FinancialPlanKind(rawValue: kindRaw) ?? .other }
+        set { kindRaw = newValue.rawValue }
+    }
+
+    var status: FinancialPlanStatus {
+        get { FinancialPlanStatus(rawValue: statusRaw) ?? .active }
+        set { statusRaw = newValue.rawValue }
+    }
+
+    var fundedMinor: Int64 {
+        let (sum, overflow) = max(0, reservedCashMinor).addingReportingOverflow(max(0, heldAssetMinor))
+        return min(targetAmountMinor, overflow ? Int64.max : sum)
+    }
+
+    var progress: Double {
+        guard targetAmountMinor > 0 else { return 0 }
+        return min(1, Double(fundedMinor) / Double(targetAmountMinor))
     }
 }
 

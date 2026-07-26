@@ -113,17 +113,74 @@ final class DaisyUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
     }
 
-    func testDashboardWealthReturnsToDashboard() {
-        let wealthCard = app.buttons["dashboardWealthCard"]
-        XCTAssertTrue(wealthCard.waitForExistence(timeout: 5))
-        tapReliably(wealthCard)
+    func testDashboardCashPlanningReturnsToDashboard() {
+        let cashCard = app.buttons["dashboardCashStatusCard"]
+        XCTAssertTrue(cashCard.waitForExistence(timeout: 5))
+        tapReliably(cashCard)
 
-        XCTAssertTrue(app.navigationBars["资产"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["资金调度"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.tabBars.buttons["总览"].isSelected)
 
-        app.navigationBars["资产"].buttons.firstMatch.tap()
+        app.navigationBars["资金调度"].buttons.firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Daisy"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.tabBars.buttons["总览"].isSelected)
+    }
+
+    func testWealthCashPlanningReturnsToWealth() {
+        app.tabBars.buttons["设置"].tap()
+        app.staticTexts["账户与资产"].tap()
+        XCTAssertTrue(app.navigationBars["资产"].waitForExistence(timeout: 3))
+
+        let planningLink = app.buttons["wealthCashPlanningLink"]
+        XCTAssertTrue(planningLink.waitForExistence(timeout: 3))
+        planningLink.tap()
+        XCTAssertTrue(app.navigationBars["资金调度"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
+
+        app.navigationBars["资金调度"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["资产"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.buttons["设置"].isSelected)
+    }
+
+    func testFinancialPlanCanBeAdded() {
+        let cashCard = app.buttons["dashboardCashStatusCard"]
+        XCTAssertTrue(cashCard.waitForExistence(timeout: 5))
+        tapReliably(cashCard)
+        app.buttons["addFinancialPlanButton"].tap()
+
+        let name = app.textFields["financialPlanNameField"]
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        name.tap()
+        name.typeText("旅行储备")
+        let target = app.textFields["financialPlanTargetField"]
+        target.tap()
+        target.typeText("5000")
+        let reserved = app.textFields["financialPlanReservedField"]
+        reserved.tap()
+        clearAndTypeText(reserved, "1200")
+        app.buttons["saveFinancialPlanButton"].tap()
+
+        XCTAssertTrue(app.staticTexts["旅行储备"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["资金缺口"].exists)
+    }
+
+    func testBudgetCashReservationPersists() {
+        app.tabBars.buttons["设置"].tap()
+        app.staticTexts["月度预算"].tap()
+
+        let amount = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == %@", "0.00")
+        ).firstMatch
+        XCTAssertTrue(amount.waitForExistence(timeout: 3))
+        amount.tap()
+        amount.typeText("3000")
+        let reserve = app.switches["budgetReserveFromCashToggle"]
+        XCTAssertEqual(reserve.value as? String, "1")
+        app.buttons["保存预算"].tap()
+        app.navigationBars["月度预算"].buttons.firstMatch.tap()
+        app.staticTexts["月度预算"].tap()
+
+        XCTAssertEqual(app.switches["budgetReserveFromCashToggle"].value as? String, "1")
     }
 
     func testSettingsWealthReturnsToSettings() {
@@ -282,6 +339,14 @@ final class DaisyUITests: XCTestCase {
         } else {
             element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
+    }
+
+    private func clearAndTypeText(_ element: XCUIElement, _ text: String) {
+        element.tap()
+        if let current = element.value as? String, !current.isEmpty {
+            element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
+        }
+        element.typeText(text)
     }
 
     private func createManualTransaction(amount: String, merchant: String, kind: String? = nil) {

@@ -12,6 +12,22 @@ final class AppDatabaseTests: XCTestCase {
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<Account>()), 4)
     }
 
+    func testDatabaseRegistersFinancialPlans() throws {
+        let database = AppDatabase(inMemory: true)
+        let plan = FinancialPlan(
+            name: "应急储备",
+            kind: .emergency,
+            targetAmountMinor: 50_000,
+            reservedCashMinor: 10_000
+        )
+        database.container.mainContext.insert(plan)
+        try database.container.mainContext.save()
+
+        let stored = try database.container.mainContext.fetch(FetchDescriptor<FinancialPlan>())
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertEqual(stored[0].kind, .emergency)
+    }
+
     func testRecognitionSaveIsIdempotentForSameTransactionWindow() throws {
         let database = AppDatabase(inMemory: true)
         database.seedIfNeeded()
