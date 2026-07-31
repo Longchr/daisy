@@ -114,6 +114,8 @@ struct PendingRecognitionsView: View {
         case "tls_failure": "AI 服务证书校验失败"
         case "image_too_large": "截图压缩后仍然过大"
         case "invalid_response": "AI 返回格式不正确"
+        case "transaction_not_completed": "页面中的交易尚未完成"
+        case "multiple_transactions": "页面中包含多笔交易"
         case "missing_amount": "未识别到可信金额"
         case "unsupported_currency": "识别到不支持的币种"
         case "image_unreadable": "截图无法读取"

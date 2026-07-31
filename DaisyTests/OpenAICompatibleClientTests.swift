@@ -131,6 +131,86 @@ final class OpenAICompatibleClientTests: XCTestCase {
         XCTAssertEqual(requestCount, 2)
     }
 
+    func testRecognitionPromptIncludesComplexPageDecisionRules() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let body = try Self.bodyData(from: request)
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let messages = try XCTUnwrap(object["messages"] as? [[String: Any]])
+            let content = try XCTUnwrap(messages.last?["content"] as? [[String: Any]])
+            let prompt = try XCTUnwrap(content.first?["text"] as? String)
+
+            XCTAssertTrue(prompt.contains("transaction_status"))
+            XCTAssertTrue(prompt.contains("multiple_transactions"))
+            XCTAssertTrue(prompt.contains("实付金额"))
+            XCTAssertTrue(prompt.contains("余额"))
+            XCTAssertTrue(prompt.contains("待付款"))
+
+            let modelJSON = #"{"transaction":{"type":"expense","amount_minor":2800,"currency":"CNY","currency_exponent":2,"merchant":"规则咖啡","category_id":"expense.food","occurred_at":null,"payment_channel":null,"payment_method_hint":null,"order_id_hint":null,"note":null},"page":{"type":"payment_result","transaction_status":"completed","multiple_transactions":false,"amount_role":"paid"},"confidence":{"overall":0.96},"evidence":null,"warnings":[]}"#
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                try Self.chatResponse(content: modelJSON)
+            )
+        }
+
+        let result = try await OpenAICompatibleClient(session: makeSession()).recognize(
+            imageData: Data([0x01]),
+            ocrText: "支付成功 ¥28.00",
+            categories: [("expense.food", "餐饮")],
+            configuration: configuration(),
+            apiKey: ""
+        )
+
+        XCTAssertEqual(result.payload.page?.transactionStatus, "completed")
+        XCTAssertEqual(result.payload.page?.amountRole, "paid")
+    }
+
+    func testTimeoutIsMappedWithoutBlindRetry() async {
+        var requestCount = 0
+        MockURLProtocol.requestHandler = { _ in
+            requestCount += 1
+            throw URLError(.timedOut)
+        }
+
+        do {
+            _ = try await OpenAICompatibleClient(session: makeSession()).recognize(
+                imageData: Data([0x01]),
+                ocrText: "支付成功 ¥28.00",
+                categories: [("expense.food", "餐饮")],
+                configuration: configuration(),
+                apiKey: ""
+            )
+            XCTFail("Expected timeout")
+        } catch {
+            XCTAssertEqual(error as? RecognitionError, .timeout)
+        }
+        XCTAssertEqual(requestCount, 1)
+    }
+
+    func testRateLimitIsNotRetried() async {
+        var requestCount = 0
+        MockURLProtocol.requestHandler = { request in
+            requestCount += 1
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 429, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        do {
+            _ = try await OpenAICompatibleClient(session: makeSession()).recognize(
+                imageData: Data([0x01]),
+                ocrText: "支付成功 ¥28.00",
+                categories: [("expense.food", "餐饮")],
+                configuration: configuration(),
+                apiKey: ""
+            )
+            XCTFail("Expected rate limit")
+        } catch {
+            XCTAssertEqual(error as? RecognitionError, .rateLimited)
+        }
+        XCTAssertEqual(requestCount, 1)
+    }
+
     func testDecodesArrayMessageContentFromCompatibleProvider() async throws {
         MockURLProtocol.requestHandler = { request in
             let modelJSON = #"{"transaction":{"type":"expense","amount_minor":2800,"currency":"CNY","currency_exponent":2,"merchant":"数组内容","category_id":"expense.food","occurred_at":null,"payment_channel":null,"payment_method_hint":null,"order_id_hint":null,"note":null},"confidence":{"overall":0.96},"evidence":null,"warnings":[]}"#

@@ -44,12 +44,15 @@ struct RecognizePaymentIntent: AppIntent {
             return .result(dialog: IntentDialog("已记账：\(transaction.merchant) \(transaction.money.formatted()) · \(recognition.kind.title)"))
         } catch {
             let recognitionError = error as? RecognitionError
-            _ = try? await AppDatabase.shared.createDraft(
-                recognition: nil,
-                rawData: nil,
-                idempotencyKey: idempotencyKey,
-                errorCode: recognitionError?.diagnosticCode ?? "unknown"
-            )
+            if recognitionError != .transactionNotCompleted,
+               recognitionError != .multipleTransactions {
+                _ = try? await AppDatabase.shared.createDraft(
+                    recognition: nil,
+                    rawData: nil,
+                    idempotencyKey: idempotencyKey,
+                    errorCode: recognitionError?.diagnosticCode ?? "unknown"
+                )
+            }
             let message = recognitionError?.errorDescription ?? "识别失败，请稍后重试"
             return .result(
                 dialog: IntentDialog(LocalizedStringResource(stringLiteral: message))

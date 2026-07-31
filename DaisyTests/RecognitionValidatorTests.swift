@@ -45,6 +45,145 @@ final class RecognitionValidatorTests: XCTestCase {
         XCTAssertFalse(result.needsReview)
     }
 
+    func testCompletedPaymentWithMatchingAmountRoleAutoSaves() throws {
+        let result = try RecognitionValidator.validate(
+            makePayload(
+                amount: 2_800,
+                confidence: 0.95,
+                page: .init(
+                    type: "payment_result",
+                    transactionStatus: "completed",
+                    multipleTransactions: false,
+                    amountRole: "paid"
+                )
+            ),
+            ocrText: "优惠 2.00 元\n实付金额 ¥28.00",
+            allowedCategoryIDs: allowed,
+            autoSaveThreshold: 0.9,
+            highValueThresholdMinor: 50_000
+        )
+
+        XCTAssertFalse(result.needsReview)
+        XCTAssertEqual(result.amountMinor, 2_800)
+    }
+
+    func testPendingOrFailedPageIsNotRecorded() {
+        for status in ["pending", "failed", "cancelled"] {
+            XCTAssertThrowsError(
+                try RecognitionValidator.validate(
+                    makePayload(
+                        amount: 2_800,
+                        confidence: 0.99,
+                        page: .init(
+                            type: "payment_result",
+                            transactionStatus: status,
+                            multipleTransactions: false,
+                            amountRole: "paid"
+                        )
+                    ),
+                    ocrText: "¥28.00",
+                    allowedCategoryIDs: allowed,
+                    autoSaveThreshold: 0.9,
+                    highValueThresholdMinor: 50_000
+                )
+            ) { error in
+                XCTAssertEqual(error as? RecognitionError, .transactionNotCompleted)
+            }
+        }
+    }
+
+    func testTransactionListIsNotReducedToOneGuessedEntry() {
+        XCTAssertThrowsError(
+            try RecognitionValidator.validate(
+                makePayload(
+                    amount: nil,
+                    confidence: 0.99,
+                    page: .init(
+                        type: "transaction_list",
+                        transactionStatus: "unknown",
+                        multipleTransactions: true,
+                        amountRole: "unknown"
+                    )
+                ),
+                ocrText: "咖啡 ¥28.00\n超市 ¥56.00",
+                allowedCategoryIDs: allowed,
+                autoSaveThreshold: 0.9,
+                highValueThresholdMinor: 50_000
+            )
+        ) { error in
+            XCTAssertEqual(error as? RecognitionError, .multipleTransactions)
+        }
+    }
+
+    func testOrderTotalAndUnknownStatusRequireReview() throws {
+        let result = try RecognitionValidator.validate(
+            makePayload(
+                amount: 2_800,
+                confidence: 0.99,
+                page: .init(
+                    type: "order_detail",
+                    transactionStatus: "unknown",
+                    multipleTransactions: false,
+                    amountRole: "order_total"
+                )
+            ),
+            ocrText: "订单金额 ¥28.00",
+            allowedCategoryIDs: allowed,
+            autoSaveThreshold: 0.9,
+            highValueThresholdMinor: 50_000
+        )
+
+        XCTAssertTrue(result.needsReview)
+        XCTAssertTrue(result.warnings.contains("交易完成状态不明确"))
+        XCTAssertTrue(result.warnings.contains("金额含义与交易类型不一致"))
+    }
+
+    func testDiscountAmountCannotOverridePreferredPaidAmount() throws {
+        let result = try RecognitionValidator.validate(
+            makePayload(
+                amount: 200,
+                confidence: 0.99,
+                page: .init(
+                    type: "payment_result",
+                    transactionStatus: "completed",
+                    multipleTransactions: false,
+                    amountRole: "paid"
+                )
+            ),
+            ocrText: "优惠金额 2.00 元\n实付金额 ¥28.00",
+            allowedCategoryIDs: allowed,
+            autoSaveThreshold: 0.9,
+            highValueThresholdMinor: 50_000
+        )
+
+        XCTAssertTrue(result.needsReview)
+        XCTAssertTrue(result.warnings.contains("模型金额与本地 OCR 候选不一致"))
+    }
+
+    func testCompletedRefundUsesRefundedAmountRole() throws {
+        let result = try RecognitionValidator.validate(
+            makePayload(
+                amount: 2_800,
+                confidence: 0.96,
+                kind: .refund,
+                categoryID: "income.refund",
+                page: .init(
+                    type: "refund_result",
+                    transactionStatus: "completed",
+                    multipleTransactions: false,
+                    amountRole: "refunded"
+                )
+            ),
+            ocrText: "退款成功\n退款金额 ¥28.00",
+            allowedCategoryIDs: allowed,
+            autoSaveThreshold: 0.9,
+            highValueThresholdMinor: 50_000
+        )
+
+        XCTAssertFalse(result.needsReview)
+        XCTAssertEqual(result.kind, .refund)
+    }
+
     func testModelWarningDoesNotOverrideHighConfidenceAutoSave() throws {
         let result = try RecognitionValidator.validate(
             makePayload(
@@ -209,6 +348,7 @@ final class RecognitionValidatorTests: XCTestCase {
         categoryID: String = "expense.food",
         currencyExponent: Int = 2,
         merchant: String? = "Daisy 测试咖啡",
+        page: RecognitionPayload.PageAssessment? = nil,
         warnings: [String] = []
     ) -> RecognitionPayload {
         RecognitionPayload(
@@ -225,6 +365,7 @@ final class RecognitionValidatorTests: XCTestCase {
                 orderIDHint: nil,
                 note: nil
             ),
+            page: page,
             confidence: .init(
                 overall: confidence,
                 amount: confidence,

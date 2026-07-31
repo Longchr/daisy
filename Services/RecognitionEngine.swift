@@ -22,8 +22,8 @@ actor RecognitionEngine {
         let idempotencyKey = RecognitionFingerprint.make(from: imageData)
         let prepared = try ImagePreprocessor.prepareJPEG(from: imageData)
         async let ocrTask = VisionOCRService.recognizeText(from: prepared)
-        let ocrText = try await ocrTask
         let categories = await AppDatabase.shared.recognitionCategoryDescriptors()
+        let ocrText = try await ocrTask
 
         let response = try await client.recognize(
             imageData: prepared,

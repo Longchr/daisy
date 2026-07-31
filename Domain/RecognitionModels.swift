@@ -1,6 +1,20 @@
 import Foundation
 
 struct RecognitionPayload: Codable, Equatable, Sendable {
+    struct PageAssessment: Codable, Equatable, Sendable {
+        let type: String?
+        let transactionStatus: String?
+        let multipleTransactions: Bool?
+        let amountRole: String?
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case transactionStatus = "transaction_status"
+            case multipleTransactions = "multiple_transactions"
+            case amountRole = "amount_role"
+        }
+    }
+
     struct Transaction: Codable, Equatable, Sendable {
         let type: String
         let amountMinor: Int64?
@@ -58,9 +72,24 @@ struct RecognitionPayload: Codable, Equatable, Sendable {
     }
 
     let transaction: Transaction
+    let page: PageAssessment?
     let confidence: Confidence?
     let evidence: Evidence?
     let warnings: [String]?
+
+    init(
+        transaction: Transaction,
+        page: PageAssessment? = nil,
+        confidence: Confidence?,
+        evidence: Evidence?,
+        warnings: [String]?
+    ) {
+        self.transaction = transaction
+        self.page = page
+        self.confidence = confidence
+        self.evidence = evidence
+        self.warnings = warnings
+    }
 }
 
 struct ValidatedRecognition: Codable, Equatable, Sendable {
@@ -91,6 +120,8 @@ enum RecognitionError: LocalizedError, Equatable, Sendable {
     case tlsFailure
     case imageTooLarge
     case invalidResponse
+    case transactionNotCompleted
+    case multipleTransactions
     case missingAmount
     case unsupportedCurrency
     case imageUnreadable
@@ -104,10 +135,12 @@ enum RecognitionError: LocalizedError, Equatable, Sendable {
         case .rateLimited: "AI 服务请求过于频繁，请稍后再试"
         case .modelNotFound: "所选模型不存在"
         case .modelDoesNotSupportVision: "所选模型不支持图片识别"
-        case .timeout: "AI 服务响应超时"
+        case .timeout: "AI 服务响应超时，请稍后重试或在设置中增加超时时间"
         case .tlsFailure: "AI 服务证书校验失败"
         case .imageTooLarge: "截图压缩后仍然过大"
         case .invalidResponse: "AI 返回的数据格式无法识别"
+        case .transactionNotCompleted: "当前页面没有显示已完成的交易，不会记账"
+        case .multipleTransactions: "当前页面包含多笔交易，请打开一笔交易的详情后再识别"
         case .missingAmount: "没有识别到可信的付款金额"
         case .unsupportedCurrency: "识别到暂不支持的币种"
         case .imageUnreadable: "截图为空白或无法读取"
@@ -127,6 +160,8 @@ enum RecognitionError: LocalizedError, Equatable, Sendable {
         case .tlsFailure: "tls_failure"
         case .imageTooLarge: "image_too_large"
         case .invalidResponse: "invalid_response"
+        case .transactionNotCompleted: "transaction_not_completed"
+        case .multipleTransactions: "multiple_transactions"
         case .missingAmount: "missing_amount"
         case .unsupportedCurrency: "unsupported_currency"
         case .imageUnreadable: "image_unreadable"

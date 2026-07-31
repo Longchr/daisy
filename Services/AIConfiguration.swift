@@ -1,6 +1,8 @@
 import Foundation
 
 struct AIConfiguration: Codable, Equatable, Sendable {
+    static let recommendedTimeoutSeconds: Double = 35
+
     enum Status: Equatable, Sendable {
         case notConfigured
         case configured
@@ -63,6 +65,7 @@ struct AIConfiguration: Codable, Equatable, Sendable {
         value.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         while value.baseURL.hasSuffix("/") { value.baseURL.removeLast() }
         value.modelID = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        value.timeoutSeconds = min(60, max(20, timeoutSeconds))
         if value.name.isEmpty { value.name = "我的 AI" }
         return value
     }
@@ -71,7 +74,7 @@ struct AIConfiguration: Codable, Equatable, Sendable {
         name: "我的 AI",
         baseURL: "",
         modelID: "",
-        timeoutSeconds: 15,
+        timeoutSeconds: recommendedTimeoutSeconds,
         jsonMode: .automatic,
         localNetworkEnabled: false,
         visionVerified: false
@@ -84,8 +87,18 @@ enum AIConfigurationStore {
 
     static func load(defaults: UserDefaults = .standard) -> AIConfiguration {
         guard let data = defaults.data(forKey: configurationKey),
-              let value = try? JSONDecoder().decode(AIConfiguration.self, from: data) else {
+              var value = try? JSONDecoder().decode(AIConfiguration.self, from: data) else {
             return .empty
+        }
+
+        // 旧版本默认 15 秒不足以覆盖视觉模型的首个响应，读取时原地迁移。
+        if value.timeoutSeconds <= 15 {
+            value.timeoutSeconds = AIConfiguration.recommendedTimeoutSeconds
+            if let migrated = try? JSONEncoder().encode(value) {
+                defaults.set(migrated, forKey: configurationKey)
+            }
+        } else {
+            value.timeoutSeconds = min(60, max(20, value.timeoutSeconds))
         }
         return value
     }

@@ -62,7 +62,7 @@ struct AIServiceSettingsView: View {
                 Text("互联网地址必须使用 HTTPS。本地 HTTP 仅允许局域网、localhost、.local 或个人组网地址。")
             }
 
-            Section("模型") {
+            Section {
                 Button {
                     Task { await fetchModels() }
                 } label: {
@@ -97,12 +97,16 @@ struct AIServiceSettingsView: View {
 
                 HStack {
                     Text("超时")
-                    Slider(value: $configuration.timeoutSeconds, in: 5...60, step: 1)
+                    Slider(value: $configuration.timeoutSeconds, in: 20...60, step: 1)
                     Text("\(Int(configuration.timeoutSeconds)) 秒")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .frame(width: 42)
                 }
+            } header: {
+                Text("模型")
+            } footer: {
+                Text("视觉模型通常需要更长响应时间，建议保持 35 秒或以上。")
             }
 
             Section {

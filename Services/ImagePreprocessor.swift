@@ -4,36 +4,42 @@ import UIKit
 enum ImagePreprocessor {
     static func prepareJPEG(
         from data: Data,
-        maxDimension: CGFloat = 1600,
-        compressionQuality: CGFloat = 0.76,
-        maxByteCount: Int = 1_500_000
+        maxDimension: CGFloat = 1440,
+        compressionQuality: CGFloat = 0.72,
+        maxByteCount: Int = 850_000
     ) throws -> Data {
         guard let image = UIImage(data: data), image.size.width > 8, image.size.height > 8 else {
             throw RecognitionError.imageUnreadable
         }
 
         let longest = max(image.size.width, image.size.height)
-        let scale = min(1, maxDimension / longest)
-        let target = CGSize(
-            width: max(1, floor(image.size.width * scale)),
-            height: max(1, floor(image.size.height * scale))
-        )
+        var targetLongest = min(longest, maxDimension)
 
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        format.opaque = true
-        let renderer = UIGraphicsImageRenderer(size: target, format: format)
-        let rendered = renderer.image { context in
-            UIColor.systemBackground.setFill()
-            context.fill(CGRect(origin: .zero, size: target))
-            image.draw(in: CGRect(origin: .zero, size: target))
-        }
-        for quality in [compressionQuality, 0.60, 0.45] {
-            if let encoded = rendered.jpegData(compressionQuality: quality),
-               !encoded.isEmpty,
-               encoded.count <= maxByteCount {
-                return encoded
+        while targetLongest >= min(720, longest) {
+            let scale = min(1, targetLongest / longest)
+            let target = CGSize(
+                width: max(1, floor(image.size.width * scale)),
+                height: max(1, floor(image.size.height * scale))
+            )
+
+            let format = UIGraphicsImageRendererFormat.default()
+            format.scale = 1
+            format.opaque = true
+            let renderer = UIGraphicsImageRenderer(size: target, format: format)
+            let rendered = renderer.image { context in
+                UIColor.systemBackground.setFill()
+                context.fill(CGRect(origin: .zero, size: target))
+                image.draw(in: CGRect(origin: .zero, size: target))
             }
+            for quality in [compressionQuality, 0.58, 0.44, 0.34] {
+                if let encoded = rendered.jpegData(compressionQuality: quality),
+                   !encoded.isEmpty,
+                   encoded.count <= maxByteCount {
+                    return encoded
+                }
+            }
+
+            targetLongest *= 0.82
         }
         throw RecognitionError.imageTooLarge
     }

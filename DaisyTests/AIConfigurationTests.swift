@@ -43,12 +43,32 @@ final class AIConfigurationTests: XCTestCase {
         XCTAssertEqual(AIConfigurationStore.load(defaults: defaults), expected)
     }
 
+    func testLegacyDefaultTimeoutIsMigrated() throws {
+        let suiteName = "AIConfigurationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var legacy = makeConfiguration()
+        legacy.timeoutSeconds = 15
+        defaults.set(try JSONEncoder().encode(legacy), forKey: AIConfigurationStore.configurationKey)
+
+        let migrated = AIConfigurationStore.load(defaults: defaults)
+
+        XCTAssertEqual(migrated.timeoutSeconds, AIConfiguration.recommendedTimeoutSeconds)
+        XCTAssertEqual(
+            try JSONDecoder().decode(
+                AIConfiguration.self,
+                from: XCTUnwrap(defaults.data(forKey: AIConfigurationStore.configurationKey))
+            ).timeoutSeconds,
+            AIConfiguration.recommendedTimeoutSeconds
+        )
+    }
+
     private func makeConfiguration() -> AIConfiguration {
         AIConfiguration(
             name: "Personal AI",
             baseURL: "https://example.com/v1",
             modelID: "vision-model",
-            timeoutSeconds: 15,
+            timeoutSeconds: AIConfiguration.recommendedTimeoutSeconds,
             jsonMode: .automatic,
             localNetworkEnabled: false,
             visionVerified: false
