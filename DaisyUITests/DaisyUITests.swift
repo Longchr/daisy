@@ -10,6 +10,56 @@ final class DaisyUITests: XCTestCase {
         app.launch()
     }
 
+    override func tearDownWithError() throws {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Daisy-\(name)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testThesisScreenshotsOfImplementedFeatures() {
+        createManualTransaction(amount: "28.50", merchant: "样例咖啡")
+        createManualTransaction(amount: "86.00", merchant: "样例超市")
+        createManualTransaction(amount: "3000.00", merchant: "样例收入", kind: "收入")
+        captureThesisScreenshot("01-dashboard")
+
+        app.tabBars.buttons["账单"].tap()
+        XCTAssertTrue(app.staticTexts["样例咖啡"].waitForExistence(timeout: 5))
+        captureThesisScreenshot("02-transactions")
+        app.staticTexts["样例咖啡"].tap()
+        XCTAssertTrue(app.navigationBars["账单详情"].waitForExistence(timeout: 3))
+        captureThesisScreenshot("03-transaction-detail")
+        app.navigationBars["账单详情"].buttons.firstMatch.tap()
+
+        app.tabBars.buttons["分析"].tap()
+        XCTAssertTrue(app.staticTexts["支出变化"].waitForExistence(timeout: 5))
+        captureThesisScreenshot("04-analytics")
+        app.swipeUp()
+        captureThesisScreenshot("05-category-analysis")
+
+        app.tabBars.buttons["设置"].tap()
+        captureThesisScreenshot("06-settings")
+        app.staticTexts["账户与资产"].tap()
+        XCTAssertTrue(app.navigationBars["资产"].waitForExistence(timeout: 3))
+        captureThesisScreenshot("07-wealth")
+        app.navigationBars["资产"].buttons.firstMatch.tap()
+
+        app.staticTexts["月度预算"].tap()
+        let amount = app.textFields["budgetTotalAmountField"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 3))
+        amount.tap()
+        amount.typeText("1500")
+        app.buttons["保存预算"].tap()
+        captureThesisScreenshot("08-budget")
+    }
+
+    private func captureThesisScreenshot(_ title: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Thesis-\(title)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testLaunchShowsNativeDashboard() {
         XCTAssertTrue(app.navigationBars["Daisy"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["本月结余"].exists)
