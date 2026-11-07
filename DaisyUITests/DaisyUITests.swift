@@ -53,6 +53,46 @@ final class DaisyUITests: XCTestCase {
         captureThesisScreenshot("08-budget")
     }
 
+    func testThesisAdditionalFeatureScreenshots() {
+        createManualTransaction(amount: "38.60", merchant: "测试午餐")
+        tapReliably(app.buttons["addTransactionButton"])
+        app.buttons["手动记账"].tap()
+        XCTAssertTrue(app.textFields["amountField"].waitForExistence(timeout: 3))
+        captureThesisScreenshot("09-manual-entry")
+        app.buttons["取消"].tap()
+
+        app.tabBars.buttons["设置"].tap()
+        app.staticTexts["AI 识别服务"].tap()
+        XCTAssertTrue(app.textFields["aiBaseURLField"].waitForExistence(timeout: 3))
+        captureThesisScreenshot("10-ai-settings")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.staticTexts["背面轻点与快捷指令"].tap()
+        XCTAssertTrue(app.staticTexts["1  截屏"].waitForExistence(timeout: 3))
+        captureThesisScreenshot("11-automation-guide")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.staticTexts["资金调度"].tap()
+        XCTAssertTrue(app.buttons["addFinancialPlanButton"].waitForExistence(timeout: 3))
+        captureThesisScreenshot("12-cash-planning")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.staticTexts["分类"].tap()
+        XCTAssertTrue(app.navigationBars["分类"].waitForExistence(timeout: 3))
+        captureThesisScreenshot("13-categories")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.staticTexts["周期提醒"].tap()
+        XCTAssertTrue(app.buttons["addRecurringReminderButton"].waitForExistence(timeout: 3))
+        captureThesisScreenshot("14-recurring")
+        app.navigationBars.buttons.firstMatch.tap()
+        app.swipeUp()
+        let data = app.staticTexts["导出、备份与恢复"]
+        XCTAssertTrue(data.waitForExistence(timeout: 3))
+        data.tap()
+        captureThesisScreenshot("15-export-backup")
+    }
+
     private func captureThesisScreenshot(_ title: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Thesis-\(title)"

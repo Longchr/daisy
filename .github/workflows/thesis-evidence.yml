@@ -2,7 +2,7 @@ name: Daisy thesis evidence
 
 on:
   push:
-    branches: [codex/thesis-evidence-20260911]
+    branches: [codex/thesis-final-evidence-20261107]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
 jobs:
   evidence:
     runs-on: macos-15
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Prepare project and record environment
@@ -19,6 +19,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/evidence
+          if [ -d /Applications/Xcode_16.4.app/Contents/Developer ]; then
+            sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          fi
           brew install xcodegen
           xcodegen generate
           git rev-parse HEAD > build/evidence/commit.txt
@@ -27,6 +30,8 @@ jobs:
           sw_vers > build/evidence/macos-version.txt
           xcodegen --version > build/evidence/xcodegen-version.txt
           xcrun simctl list devices available -j > build/evidence/devices.json
+          sysctl -n machdep.cpu.brand_string > build/evidence/cpu.txt
+          sysctl -n hw.memsize > build/evidence/memory.txt
       - name: Select iPhone simulator
         id: simulator
         shell: bash
@@ -37,6 +42,7 @@ jobs:
           xcrun simctl boot "$DEVICE_ID" || true
           xcrun simctl bootstatus "$DEVICE_ID" -b
           xcrun simctl status_bar "$DEVICE_ID" override --time '09:41' --batteryState charged --batteryLevel 100
+          xcrun simctl ui "$DEVICE_ID" appearance light
           printf '%s\n' "$DEVICE_ID" > build/evidence/selected-device.txt
       - name: Build and run unit and UI tests
         shell: bash
@@ -52,6 +58,30 @@ jobs:
             -resultBundlePath build/DaisyTests.xcresult \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/evidence/xcodebuild-test.log
+      - name: Capture dark appearance with native UI tests
+        shell: bash
+        run: |
+          set -o pipefail
+          xcrun simctl ui '${{ steps.simulator.outputs.id }}' appearance dark
+          xcodebuild test \
+            -project Daisy.xcodeproj -scheme Daisy \
+            -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
+            -parallel-testing-enabled NO \
+            -only-testing:DaisyUITests/DaisyUITests/testThesisScreenshotsOfImplementedFeatures \
+            -resultBundlePath build/DaisyDarkScreens.xcresult \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/evidence/dark-screens.log
+      - name: Build distributable iPhone application
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild build -project Daisy.xcodeproj -scheme Daisy -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DeviceBuild \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/evidence/device-build.log
+          mkdir -p build/ipa/Payload
+          cp -R build/DeviceBuild/Build/Products/Release-iphoneos/Daisy.app build/ipa/Payload/
+          (cd build/ipa && zip -qr ../Daisy-thesis-unsigned.ipa Payload)
+          shasum -a 256 build/Daisy-thesis-unsigned.ipa > build/evidence/ipa-sha256.txt
       - name: Export test evidence
         if: always()
         shell: bash
@@ -64,13 +94,20 @@ jobs:
             xcrun xcresulttool export attachments --path build/DaisyTests.xcresult --output-path build/evidence/attachments || true
             xcrun xccov view --report --json build/DaisyTests.xcresult > build/evidence/coverage.json || true
           fi
+          if [ -d build/DaisyDarkScreens.xcresult ]; then
+            mkdir -p build/evidence/dark-attachments
+            xcrun xcresulttool get test-results summary --path build/DaisyDarkScreens.xcresult --format json > build/evidence/dark-summary.json || true
+            xcrun xcresulttool export attachments --path build/DaisyDarkScreens.xcresult --output-path build/evidence/dark-attachments || true
+          fi
       - name: Upload evidence and result bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Daisy-thesis-evidence
+          name: Daisy-thesis-evidence-20261107
           path: |
             build/evidence
             build/DaisyTests.xcresult
+            build/DaisyDarkScreens.xcresult
+            build/Daisy-thesis-unsigned.ipa
           retention-days: 30
           if-no-files-found: error
